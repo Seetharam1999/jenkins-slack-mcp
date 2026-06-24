@@ -36,63 +36,80 @@ function fetchText(url, headers) {
   });
 }
 
-class BuildSummaryPanel {
-  static currentPanel;
+// Track open panels by unique key
+const openPanels = new Map();
 
-  static show(context, jenkinsService, jobName, branch) {
+class BuildSummaryPanel {
+  /**
+   * @param {number|null} buildNumber - specific build number to show, or null for latest
+   */
+  static show(context, jenkinsService, jobName, branch, buildNumber) {
+    const panelKey = buildNumber ? `${jobName}#${buildNumber}` : `${jobName}-latest-${Date.now()}`;
     const column = vscode.ViewColumn.Beside;
-    if (BuildSummaryPanel.currentPanel) {
-      BuildSummaryPanel.currentPanel._panel.reveal(column);
-      BuildSummaryPanel.currentPanel._startPolling(jenkinsService, jobName, branch);
-      return;
-    }
-    const panel = vscode.window.createWebviewPanel('buildpilot.summary', `Build: ${jobName}`, column, {
+
+    // Always open a new tab
+    const title = buildNumber ? `${jobName} #${buildNumber}` : `${jobName} (latest)`;
+    const panel = vscode.window.createWebviewPanel('buildpilot.summary', title, column, {
       enableScripts: true,
       localResourceRoots: [],
     });
-    BuildSummaryPanel.currentPanel = new BuildSummaryPanel(panel);
-    BuildSummaryPanel.currentPanel._startPolling(jenkinsService, jobName, branch);
+
+    const instance = new BuildSummaryPanel(panel, panelKey);
+    openPanels.set(panelKey, instance);
+    instance._startPolling(jenkinsService, jobName, branch, buildNumber);
   }
 
-  constructor(panel) {
+  constructor(panel, key) {
     this._panel = panel;
+    this._key = key;
     this._polling = null;
-    this._initialized = false;
-    this._panel.onDidDispose(() => { this._stopPolling(); BuildSummaryPanel.currentPanel = null; });
+    this._panel.onDidDispose(() => {
+      this._stopPolling();
+      openPanels.delete(this._key);
+    });
   }
 
   _stopPolling() { if (this._polling) { clearInterval(this._polling); this._polling = null; } }
 
-  async _startPolling(jenkinsService, jobName, branch) {
+  async _startPolling(jenkinsService, jobName, branch, buildNumber) {
     this._stopPolling();
     const creds = jenkinsService.getCreds();
     const job = jenkinsService.getJobs()[jobName];
     if (!creds || !job) return;
 
     const headers = { Authorization: 'Basic ' + Buffer.from(`${creds.user}:${creds.apiToken}`).toString('base64') };
-    this._panel.title = `Build: ${jobName}`;
-    this._initialized = false;
     this._setShell(jobName, branch);
 
-    await new Promise(r => setTimeout(r, 3000));
+    // Determine which build to fetch
+    let targetBuild = buildNumber;
 
     const poll = async () => {
       try {
-        const build = await fetchJson(
-          `${creds.baseUrl}${job.path}/lastBuild/api/json?tree=number,building,result,timestamp,duration,displayName,description`,
-          headers
-        );
+        // If no specific build number, fetch latest
+        const buildPath = targetBuild
+          ? `${creds.baseUrl}${job.path}/${targetBuild}/api/json?tree=number,building,result,timestamp,duration,displayName,description`
+          : `${creds.baseUrl}${job.path}/lastBuild/api/json?tree=number,building,result,timestamp,duration,displayName,description`;
+
+        const build = await fetchJson(buildPath, headers);
+
+        // Lock onto this build number once discovered
+        if (!targetBuild && build?.number) targetBuild = build.number;
+
         let consoleText = '';
         try {
           const raw = await fetchText(`${creds.baseUrl}${job.path}/${build.number}/consoleText`, headers);
           consoleText = raw.split('\n').slice(-150).join('\n');
         } catch {}
+
         const status = build.building ? 'RUNNING' : (build.result || 'UNKNOWN');
+        this._panel.title = `${jobName} #${build.number} — ${status}`;
         this._sendUpdate(jobName, branch, status, build, consoleText);
         if (!build.building) this._stopPolling();
       } catch {}
     };
 
+    // Initial delay for newly triggered builds
+    if (!buildNumber) await new Promise(r => setTimeout(r, 3000));
     await poll();
     this._polling = setInterval(poll, 5000);
   }
@@ -115,23 +132,21 @@ body{font-family:-apple-system,sans-serif;padding:20px;background:var(--vscode-e
 @keyframes pulse{0%{width:0}50%{width:70%}100%{width:100%}}
 .info{font-size:11px;opacity:.5;margin-top:8px}
 </style></head><body>
-<div class="h"><span id="icon" style="font-size:24px">&#9203;</span><span class="t" id="title">${escapeHtml(jobName)}</span><span class="b" id="badge" style="background:#9e9e9e">PENDING</span></div>
+<div class="h"><span id="icon" style="font-size:24px">&#9203;</span><span class="t" id="title">${escapeHtml(jobName)}</span><span class="b" id="badge" style="background:#9e9e9e">LOADING</span></div>
 <div class="p"><div class="f" id="progress" style="background:#9e9e9e;width:0"></div></div>
 <div class="m">
 <div class="c"><div class="l">Branch</div><div class="v" id="branch">${escapeHtml(branch)}</div></div>
 <div class="c"><div class="l">Duration</div><div class="v" id="duration">—</div></div>
 <div class="c"><div class="l">Started</div><div class="v" id="started">—</div></div>
-<div class="c"><div class="l">Build</div><div class="v" id="buildnum">Queued</div></div>
+<div class="c"><div class="l">Build</div><div class="v" id="buildnum">—</div></div>
 <div class="c"><div class="l">Display Name</div><div class="v" id="displayname">—</div></div>
 <div class="c"><div class="l">Description</div><div class="v" id="description">—</div></div>
 </div>
-<div class="o" id="console">Waiting for output...</div>
+<div class="o" id="console">Loading...</div>
 <div class="info" id="info"></div>
 <script nonce="${nonce}">
-const vscode = acquireVsCodeApi();
 const colors = {SUCCESS:'#4caf50',FAILURE:'#f44336',RUNNING:'#2196f3',ABORTED:'#ff9800',PENDING:'#9e9e9e',UNKNOWN:'#9e9e9e'};
 const icons = {SUCCESS:'&#9989;',FAILURE:'&#10060;',RUNNING:'&#128260;',ABORTED:'&#9940;',PENDING:'&#9203;',UNKNOWN:'&#10067;'};
-
 window.addEventListener('message', e => {
   const d = e.data;
   const color = colors[d.status] || '#9e9e9e';
@@ -148,7 +163,6 @@ window.addEventListener('message', e => {
   prog.style.background = color;
   if (d.status === 'RUNNING') { prog.style.animation = 'pulse 2s infinite'; prog.style.width = ''; }
   else { prog.style.animation = 'none'; prog.style.width = '100%'; }
-  // Update console without resetting scroll unless user is at bottom
   const con = document.getElementById('console');
   const atBottom = con.scrollHeight - con.scrollTop - con.clientHeight < 50;
   con.textContent = d.console || 'Waiting for output...';
@@ -160,20 +174,14 @@ window.addEventListener('message', e => {
   }
 
   _sendUpdate(jobName, branch, status, build, consoleText) {
-    const buildNum = build?.number ? `#${build.number}` : 'Queued';
-    const duration = build?.duration ? `${(build.duration / 1000).toFixed(1)}s` : '—';
-    const started = build?.timestamp ? new Date(build.timestamp).toLocaleString() : '—';
-    const displayName = build?.displayName || '';
-    const description = build?.description || '';
-
     this._panel.webview.postMessage({
       status,
-      title: `${jobName} ${buildNum}`,
-      duration,
-      started,
-      buildnum: buildNum,
-      displayName,
-      description,
+      title: `${jobName} #${build?.number || '?'}`,
+      duration: build?.duration ? `${(build.duration / 1000).toFixed(1)}s` : '—',
+      started: build?.timestamp ? new Date(build.timestamp).toLocaleString() : '—',
+      buildnum: build?.number ? `#${build.number}` : '—',
+      displayName: build?.displayName || '',
+      description: build?.description || '',
       console: consoleText,
     });
   }

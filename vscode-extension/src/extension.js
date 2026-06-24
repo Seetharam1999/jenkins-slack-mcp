@@ -31,7 +31,7 @@ function activate(context) {
     vscode.commands.registerCommand('buildpilot.refreshJobs', () => refreshJobs()),
     vscode.commands.registerCommand('buildpilot.connectSlack', () => connectSlack(context)),
     vscode.commands.registerCommand('buildpilot.logout', () => logout()),
-    vscode.commands.registerCommand('buildpilot.showBuildSummary', (jobName, params) => showBuildSummary(context, jobName, params)),
+    vscode.commands.registerCommand('buildpilot.showBuildSummary', (jobName, params, buildNumber) => showBuildSummary(context, jobName, params, buildNumber)),
     vscode.commands.registerCommand('buildpilot.pinJob', (item) => { jobsProvider.pinJob(item.jobName); }),
     vscode.commands.registerCommand('buildpilot.unpinJob', (item) => { jobsProvider.unpinJob(item.jobName); }),
     vscode.commands.registerCommand('buildpilot.pinGroup', (item) => { jobsProvider.pinGroup(item.groupName); }),
@@ -266,13 +266,13 @@ async function logout() {
   vscode.window.showInformationMessage('BuildPilot: Logged out.');
 }
 
-async function showBuildSummary(context, jobName, params) {
+async function showBuildSummary(context, jobName, params, buildNumber) {
   if (!jenkinsService.isLoggedIn()) {
     vscode.window.showErrorMessage('BuildPilot: Login first.');
     return;
   }
   const branch = (params || '').replace('BRANCH=', '') || 'unknown';
-  BuildSummaryPanel.show(context, jenkinsService, jobName, branch);
+  BuildSummaryPanel.show(context, jenkinsService, jobName, branch, buildNumber || null);
 }
 
 async function stopBuildFromHistory(item) {

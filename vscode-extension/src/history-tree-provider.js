@@ -103,7 +103,7 @@ class HistoryTreeProvider {
       item.command = {
         command: 'buildpilot.showBuildSummary',
         title: 'Show Build Summary',
-        arguments: [entry.jobName, entry.params]
+        arguments: [entry.jobName, entry.params, entry.buildNumber]
       };
       return item;
     });
