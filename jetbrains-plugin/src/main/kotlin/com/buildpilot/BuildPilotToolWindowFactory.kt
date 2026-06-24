@@ -9,7 +9,7 @@ import com.intellij.ui.content.ContentFactory
 class BuildPilotToolWindowFactory : ToolWindowFactory {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         val panel = BuildPilotPanel(project)
-        val content = ContentFactory.getInstance().createContent(panel.getContent(), "Jobs", false)
+        val content = ContentFactory.getInstance().createContent(panel.getContent(), "", false)
         toolWindow.contentManager.addContent(content)
     }
 }
