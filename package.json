@@ -1,6 +1,6 @@
 {
   "name": "jenkins-slack-mcp",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MCP server to trigger Jenkins builds from any IDE with Slack notifications. Auto-configures via interactive login.",
   "main": "mcp-server.js",
   "bin": {

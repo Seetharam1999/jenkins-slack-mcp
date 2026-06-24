@@ -2,5 +2,6 @@ node_modules/
 .env
 .git/
 .claude/
+.gitnexus/
 AGENTS.md
 CLAUDE.md
