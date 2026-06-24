@@ -1,6 +1,5 @@
 package com.buildpilot.services
 
-import com.google.gson.Gson
 import com.intellij.credentialStore.CredentialAttributes
 import com.intellij.credentialStore.Credentials
 import com.intellij.ide.passwordSafe.PasswordSafe
@@ -8,23 +7,13 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
-import okhttp3.*
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
-import java.util.concurrent.TimeUnit
+import java.net.HttpURLConnection
+import java.net.URI
 
 @Service
 @State(name = "BuildPilotSlack", storages = [Storage("buildpilot-slack.xml")])
 class SlackService {
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
-        .writeTimeout(10, TimeUnit.SECONDS)
-        .build()
-    private val gson = Gson()
-    private val JSON = "application/json".toMediaType()
-
     var userId: String = ""
 
     val isConnected: Boolean get() = userId.isNotEmpty() && getBotToken().isNotEmpty()
@@ -35,13 +24,8 @@ class SlackService {
     }
 
     fun saveBotToken(token: String, slackUserId: String) {
-        if (token.isBlank() || slackUserId.isBlank()) {
-            throw IOException("Bot token and User ID are required")
-        }
-        // Validate user ID format
-        if (!slackUserId.matches(Regex("^[A-Z0-9]+$"))) {
-            throw IOException("Invalid Slack User ID format")
-        }
+        if (token.isBlank() || slackUserId.isBlank()) throw IOException("Bot token and User ID required")
+        if (!slackUserId.matches(Regex("^[A-Z0-9]+$"))) throw IOException("Invalid Slack User ID format")
         val attrs = CredentialAttributes("BuildPilot-Slack", "botToken")
         PasswordSafe.instance.set(attrs, Credentials("botToken", token))
         userId = slackUserId
@@ -51,43 +35,31 @@ class SlackService {
         if (!isConnected) return
         val botToken = getBotToken()
 
-        // Open DM channel
-        val openBody = gson.toJson(mapOf("users" to userId)).toRequestBody(JSON)
-        val openReq = Request.Builder()
-            .url("https://slack.com/api/conversations.open")
-            .header("Authorization", "Bearer $botToken")
-            .post(openBody).build()
-
-        val openResp = client.newCall(openReq).execute()
-        val openRespBody = openResp.body?.string() ?: throw IOException("Empty response")
-        openResp.close()
-        val openData = gson.fromJson(openRespBody, Map::class.java)
-        if (openData["ok"] != true) throw IOException("Slack DM open failed")
-
-        @Suppress("UNCHECKED_CAST")
-        val channelId = (openData["channel"] as? Map<String, Any>)?.get("id") as? String
-            ?: throw IOException("No channel ID returned")
-
-        // Validate channel ID format
-        if (!channelId.matches(Regex("^[A-Z0-9]+$"))) {
-            throw IOException("Invalid channel ID")
-        }
+        // Open DM
+        val openResp = slackPost("https://slack.com/api/conversations.open", """{"users":"$userId"}""", botToken)
+        val channelId = Regex("\"id\"\\s*:\\s*\"([^\"]+)\"").find(openResp)?.groupValues?.get(1) ?: return
 
         // Send message
-        val msgBody = gson.toJson(mapOf("channel" to channelId, "text" to message)).toRequestBody(JSON)
-        val msgReq = Request.Builder()
-            .url("https://slack.com/api/chat.postMessage")
-            .header("Authorization", "Bearer $botToken")
-            .post(msgBody).build()
-
-        val msgResp = client.newCall(msgReq).execute()
-        msgResp.close()
+        val escaped = message.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
+        slackPost("https://slack.com/api/chat.postMessage", """{"channel":"$channelId","text":"$escaped"}""", botToken)
     }
 
     fun logout() {
         val attrs = CredentialAttributes("BuildPilot-Slack", "botToken")
         PasswordSafe.instance.set(attrs, null)
         userId = ""
+    }
+
+    private fun slackPost(url: String, jsonBody: String, token: String): String {
+        val conn = URI(url).toURL().openConnection() as HttpURLConnection
+        conn.requestMethod = "POST"
+        conn.setRequestProperty("Authorization", "Bearer $token")
+        conn.setRequestProperty("Content-Type", "application/json")
+        conn.connectTimeout = 10000
+        conn.readTimeout = 10000
+        conn.doOutput = true
+        conn.outputStream.use { it.write(jsonBody.toByteArray()) }
+        return try { conn.inputStream.bufferedReader().readText() } finally { conn.disconnect() }
     }
 
     companion object {

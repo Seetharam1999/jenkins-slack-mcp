@@ -1,6 +1,5 @@
 package com.buildpilot.ui
 
-import com.buildpilot.services.BuildInfo
 import com.buildpilot.services.JenkinsService
 import com.buildpilot.services.SlackService
 import com.intellij.openapi.application.ApplicationManager
