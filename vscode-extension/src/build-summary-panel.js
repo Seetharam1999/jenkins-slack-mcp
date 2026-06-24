@@ -44,24 +44,41 @@ class BuildSummaryPanel {
    * @param {number|null} buildNumber - specific build number to show, or null for latest
    */
   static show(context, jenkinsService, jobName, branch, buildNumber) {
-    const panelKey = buildNumber ? `${jobName}#${buildNumber}` : `${jobName}-latest-${Date.now()}`;
-    const column = vscode.ViewColumn.Beside;
+    const panelKey = buildNumber ? `${jobName}#${buildNumber}` : `${jobName}-pending`;
 
-    // Always open a new tab
-    const title = buildNumber ? `${jobName} #${buildNumber}` : `${jobName} (latest)`;
-    const panel = vscode.window.createWebviewPanel('buildpilot.summary', title, column, {
+    // If panel for this build already exists, just reveal it
+    const existing = openPanels.get(panelKey);
+    if (existing) {
+      existing._panel.reveal();
+      return;
+    }
+
+    // For pending (no buildNumber), reuse any existing pending panel for same job
+    if (!buildNumber) {
+      const pendingKey = `${jobName}-pending`;
+      const pendingPanel = openPanels.get(pendingKey);
+      if (pendingPanel) {
+        pendingPanel._panel.reveal();
+        pendingPanel._startPolling(jenkinsService, jobName, branch, null);
+        return;
+      }
+    }
+
+    const title = buildNumber ? `${jobName} #${buildNumber}` : `${jobName} (building...)`;
+    const panel = vscode.window.createWebviewPanel('buildpilot.summary', title, vscode.ViewColumn.Active, {
       enableScripts: true,
       localResourceRoots: [],
     });
 
-    const instance = new BuildSummaryPanel(panel, panelKey);
+    const instance = new BuildSummaryPanel(panel, panelKey, jobName);
     openPanels.set(panelKey, instance);
     instance._startPolling(jenkinsService, jobName, branch, buildNumber);
   }
 
-  constructor(panel, key) {
+  constructor(panel, key, jobName) {
     this._panel = panel;
     this._key = key;
+    this._jobName = jobName;
     this._polling = null;
     this._panel.onDidDispose(() => {
       this._stopPolling();
@@ -122,6 +139,13 @@ class BuildSummaryPanel {
 
         const build = await fetchJson(buildPath, headers);
         if (!targetBuild && build?.number) targetBuild = build.number;
+
+        // Update panel key once build number is known
+        if (targetBuild && this._key !== `${jobName}#${targetBuild}`) {
+          openPanels.delete(this._key);
+          this._key = `${jobName}#${targetBuild}`;
+          openPanels.set(this._key, this);
+        }
 
         let consoleText = '';
         try {
