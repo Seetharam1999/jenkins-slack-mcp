@@ -139,6 +139,22 @@ class JenkinsService {
         if (code >= 400 && code != 201) throw IOException("Build failed: HTTP $code")
     }
 
+    fun getBuildInfo(jobName: String, buildNumber: Int): BuildInfo? {
+        val job = jobs[jobName] ?: return null
+        return try {
+            val body = httpGet("$baseUrl${job.path}/$buildNumber/api/json?tree=number,building,result,timestamp,duration,displayName,description")
+            BuildInfo(
+                number = extractJsonNumber(body, "number"),
+                building = body.contains("\"building\":true"),
+                result = extractJsonString(body, "result").ifEmpty { null },
+                timestamp = extractJsonLong(body, "timestamp"),
+                duration = extractJsonLong(body, "duration"),
+                displayName = extractJsonString(body, "displayName"),
+                description = extractJsonString(body, "description")
+            )
+        } catch (_: Exception) { null }
+    }
+
     fun getLastBuild(jobName: String): BuildInfo? {
         val job = jobs[jobName] ?: return null
         return try {
@@ -224,4 +240,4 @@ class JenkinsService {
 }
 
 data class JenkinsJob(val name: String, val path: String, val color: String)
-data class BuildInfo(val number: Int, val building: Boolean, val result: String?, val timestamp: Long, val duration: Long)
+data class BuildInfo(val number: Int, val building: Boolean, val result: String?, val timestamp: Long, val duration: Long, val displayName: String = "", val description: String = "")
