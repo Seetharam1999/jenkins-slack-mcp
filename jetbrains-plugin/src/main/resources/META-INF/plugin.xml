@@ -1,0 +1,70 @@
+<idea-plugin>
+    <id>com.buildpilot</id>
+    <name>BuildPilot</name>
+    <version>1.0.0</version>
+    <vendor email="seetharam@github.com" url="https://github.com/Seetharam1999">Seetharam</vendor>
+
+    <description><![CDATA[
+    <h2>BuildPilot 🚀</h2>
+    <p><b>Trigger Jenkins builds directly from IntelliJ / WebStorm.</b> No browser, no CLI — just click and deploy.</p>
+
+    <p><b>Jenkins</b> | <b>CI</b> | <b>CD</b> | <b>Build</b> | <b>Deploy</b> | <b>DevOps</b></p>
+
+    <h3>Features</h3>
+    <ul>
+        <li>🔑 One-time Jenkins login with API token</li>
+        <li>📋 Auto-discover all Jenkins jobs</li>
+        <li>▶️ Trigger parameterized builds from tool window</li>
+        <li>📊 Build history tracking</li>
+        <li>🔔 Slack DM notifications</li>
+        <li>🔄 Continuous Integration workflow from IDE</li>
+        <li>🚀 Continuous Deployment pipeline trigger</li>
+    </ul>
+
+    <h3>Supported IDEs</h3>
+    <ul>
+        <li>IntelliJ IDEA (Community & Ultimate)</li>
+        <li>WebStorm</li>
+        <li>Android Studio</li>
+        <li>PyCharm</li>
+        <li>GoLand</li>
+        <li>All JetBrains IDEs</li>
+    </ul>
+    ]]></description>
+
+    <change-notes><![CDATA[
+    <h3>1.0.0</h3>
+    <ul>
+        <li>Initial release</li>
+        <li>Jenkins login, auto-discover jobs, trigger builds</li>
+        <li>Slack notifications</li>
+        <li>Build history panel</li>
+    </ul>
+    ]]></change-notes>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow id="BuildPilot"
+                    secondary="true"
+                    anchor="right"
+                    factoryClass="com.buildpilot.BuildPilotToolWindowFactory"
+                    icon="/icons/buildpilot.svg"/>
+        <applicationService serviceImplementation="com.buildpilot.services.JenkinsService"/>
+        <applicationService serviceImplementation="com.buildpilot.services.SlackService"/>
+        <applicationConfigurable parentId="tools"
+                                 instance="com.buildpilot.settings.BuildPilotConfigurable"
+                                 displayName="BuildPilot"/>
+    </extensions>
+
+    <actions>
+        <group id="BuildPilot.Menu" text="BuildPilot" popup="true">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+            <action id="BuildPilot.Login" class="com.buildpilot.actions.LoginAction" text="Login to Jenkins"/>
+            <action id="BuildPilot.TriggerBuild" class="com.buildpilot.actions.TriggerBuildAction" text="Trigger Build"/>
+            <action id="BuildPilot.RefreshJobs" class="com.buildpilot.actions.RefreshJobsAction" text="Refresh Jobs"/>
+            <action id="BuildPilot.ConnectSlack" class="com.buildpilot.actions.ConnectSlackAction" text="Connect Slack"/>
+            <action id="BuildPilot.Logout" class="com.buildpilot.actions.LogoutAction" text="Logout"/>
+        </group>
+    </actions>
+</idea-plugin>
