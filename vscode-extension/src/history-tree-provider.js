@@ -51,6 +51,21 @@ class HistoryTreeProvider {
     if (this.history.length > 50) this.history = this.history.slice(0, 50);
     this.context.globalState.update('buildpilot.history', this.history);
     this.refresh();
+    this._resolveBuildNumber(entry);
+  }
+
+  async _resolveBuildNumber(entry) {
+    // Wait for Jenkins to register the build, then grab its number
+    await new Promise(r => setTimeout(r, 4000));
+    if (!this.jenkins.isLoggedIn()) return;
+    try {
+      const build = await this.jenkins.getLastBuildNumber(entry.jobName);
+      if (build) {
+        entry.buildNumber = build.number;
+        this.context.globalState.update('buildpilot.history', this.history);
+        this.refresh();
+      }
+    } catch {}
     this._pollStatus(entry);
   }
 
