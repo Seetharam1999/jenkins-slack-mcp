@@ -43,6 +43,7 @@
       { "command": "buildpilot.searchJobs", "title": "BuildPilot: Search Jobs", "icon": "$(search)" },
       { "command": "buildpilot.clearSearch", "title": "BuildPilot: Clear Search", "icon": "$(close)" },
       { "command": "buildpilot.openSettings", "title": "BuildPilot: Settings", "icon": "$(gear)" },
+      { "command": "buildpilot.stopBuild", "title": "Stop Build", "icon": "$(debug-stop)" },
       { "command": "buildpilot.logout", "title": "BuildPilot: Logout" }
     ],
     "menus": {
@@ -54,7 +55,8 @@
         { "command": "buildpilot.pinJob", "when": "view == buildpilot.jobs && viewItem == job", "group": "inline" },
         { "command": "buildpilot.unpinJob", "when": "view == buildpilot.jobs && viewItem == pinnedJob", "group": "inline" },
         { "command": "buildpilot.pinGroup", "when": "view == buildpilot.jobs && viewItem == group", "group": "inline" },
-        { "command": "buildpilot.unpinGroup", "when": "view == buildpilot.jobs && viewItem == pinnedGroup", "group": "inline" }
+        { "command": "buildpilot.unpinGroup", "when": "view == buildpilot.jobs && viewItem == pinnedGroup", "group": "inline" },
+        { "command": "buildpilot.stopBuild", "when": "view == buildpilot.history && viewItem == historyRunning", "group": "inline" }
       ]
     },
     "configuration": {

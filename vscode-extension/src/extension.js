@@ -15,7 +15,7 @@ function activate(context) {
   jenkinsService = new JenkinsService(context);
   slackService = new SlackService(context);
   jobsProvider = new JobsTreeProvider(jenkinsService, context);
-  historyProvider = new HistoryTreeProvider(context);
+  historyProvider = new HistoryTreeProvider(context, jenkinsService);
 
   const searchProvider = new SearchViewProvider(jobsProvider);
 
@@ -40,7 +40,8 @@ function activate(context) {
     vscode.commands.registerCommand('buildpilot.clearSearch', () => { jobsProvider.setFilter(''); }),
     vscode.commands.registerCommand('buildpilot.openSettings', () => {
       vscode.commands.executeCommand('workbench.action.openSettings', 'buildpilot');
-    })
+    }),
+    vscode.commands.registerCommand('buildpilot.stopBuild', (item) => stopBuildFromHistory(item))
   );
 
   if (!jenkinsService.isLoggedIn()) {
@@ -48,7 +49,8 @@ function activate(context) {
       if (choice === 'Login') vscode.commands.executeCommand('buildpilot.login');
     });
   } else {
-    refreshJobs();
+    // Wait for async credentials to load before refreshing
+    setTimeout(() => refreshJobs(), 500);
   }
 }
 
@@ -271,6 +273,31 @@ async function showBuildSummary(context, jobName, params) {
   }
   const branch = (params || '').replace('BRANCH=', '') || 'unknown';
   BuildSummaryPanel.show(context, jenkinsService, jobName, branch);
+}
+
+async function stopBuildFromHistory(item) {
+  if (!jenkinsService.isLoggedIn()) {
+    vscode.window.showErrorMessage('BuildPilot: Login first.');
+    return;
+  }
+  const jobName = item?.jobName;
+  if (!jobName) return;
+
+  try {
+    const lastBuild = await jenkinsService.getLastBuildNumber(jobName);
+    if (!lastBuild) {
+      vscode.window.showWarningMessage(`BuildPilot: No builds found for ${jobName}`);
+      return;
+    }
+    if (!lastBuild.building) {
+      vscode.window.showWarningMessage(`BuildPilot: ${jobName} #${lastBuild.number} is not running.`);
+      return;
+    }
+    await jenkinsService.cancelBuild(jobName, lastBuild.number);
+    vscode.window.showInformationMessage(`⛔ ${jobName} #${lastBuild.number} stopped.`);
+  } catch (err) {
+    vscode.window.showErrorMessage(`BuildPilot: Stop failed - ${err.message}`);
+  }
 }
 
 function deactivate() {}
