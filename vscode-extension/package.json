@@ -1,0 +1,54 @@
+{
+  "name": "buildpilot",
+  "displayName": "BuildPilot",
+  "description": "Trigger Jenkins builds directly from your IDE. Auto-discovers jobs, supports parameterized builds, and sends Slack notifications.",
+  "version": "1.0.0",
+  "publisher": "seetharam1999",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other", "Testing"],
+  "keywords": ["jenkins", "ci", "cd", "build", "deploy", "continuous integration", "continuous deployment", "devops", "pipeline", "slack"],
+  "icon": "media/buildpilot-icon.png",
+  "repository": { "type": "git", "url": "https://github.com/Seetharam1999/buildpilot" },
+  "activationEvents": ["onStartupFinished"],
+  "main": "./src/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "buildpilot",
+          "title": "BuildPilot",
+          "icon": "media/buildpilot.svg"
+        }
+      ]
+    },
+    "views": {
+      "buildpilot": [
+        { "id": "buildpilot.jobs", "name": "Jobs" },
+        { "id": "buildpilot.history", "name": "Build History" }
+      ]
+    },
+    "commands": [
+      { "command": "buildpilot.login", "title": "BuildPilot: Login to Jenkins" },
+      { "command": "buildpilot.triggerBuild", "title": "BuildPilot: Trigger Build" },
+      { "command": "buildpilot.refreshJobs", "title": "BuildPilot: Refresh Jobs" },
+      { "command": "buildpilot.connectSlack", "title": "BuildPilot: Connect Slack" },
+      { "command": "buildpilot.logout", "title": "BuildPilot: Logout" }
+    ],
+    "configuration": {
+      "title": "BuildPilot",
+      "properties": {
+        "buildpilot.jenkinsUrl": { "type": "string", "default": "", "description": "Jenkins base URL" },
+        "buildpilot.slackNotify": { "type": "boolean", "default": true, "description": "Send Slack DM on build trigger" },
+        "buildpilot.defaultBranch": { "type": "string", "default": "main", "description": "Default branch for builds" }
+      }
+    }
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "express": "^4.18.2",
+    "open": "^9.1.0"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0"
+  }
+}
