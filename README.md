@@ -51,7 +51,7 @@ npm install -g github:Seetharam1999/jenkins-slack-mcp
 ### 1. Login to Jenkins
 ```
 login_jenkins:
-  baseUrl: https://your-jenkins.com
+  baseUrl: https://jenkins.example.com
   user: your_username
   apiToken: your_api_token
   buildToken: your_remote_trigger_token
@@ -68,16 +68,16 @@ Opens browser → OAuth → done.
 ### 3. Register Jobs
 ```
 add_job:
-  command: /buildtt
-  jobPath: /view/track-and-trace/job/track-and-trace
-  name: Track & Trace
+  command: /build-backend
+  jobPath: /job/my-backend-service
+  name: Backend Service
   defaultBranch: main
 ```
 
 ### 4. Trigger Builds
 ```
 trigger_build:
-  job: /buildtt
+  job: /build-backend
   branch: feature/my-branch
   slackChannel: #deployments
 ```

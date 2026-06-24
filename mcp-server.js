@@ -16,7 +16,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       inputSchema: {
         type: 'object',
         properties: {
-          baseUrl: { type: 'string', description: 'Jenkins base URL (e.g. https://ci-ind.gopando.in)' },
+          baseUrl: { type: 'string', description: 'Jenkins base URL (e.g. https://jenkins.example.com)' },
           user: { type: 'string', description: 'Jenkins username' },
           apiToken: { type: 'string', description: 'Jenkins API token' },
           buildToken: { type: 'string', description: 'Remote build trigger token configured in Jenkins job' },
@@ -47,8 +47,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       inputSchema: {
         type: 'object',
         properties: {
-          command: { type: 'string', description: 'Trigger command name (e.g. /buildtt)' },
-          jobPath: { type: 'string', description: 'Jenkins job path (e.g. /view/track-and-trace/job/track-and-trace)' },
+          command: { type: 'string', description: 'Trigger command name (e.g. /build-app)' },
+          jobPath: { type: 'string', description: 'Jenkins job path (e.g. /job/my-app or /view/my-view/job/my-app)' },
           name: { type: 'string', description: 'Friendly job name' },
           defaultBranch: { type: 'string', description: 'Default branch if none specified' },
         },
@@ -66,7 +66,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       inputSchema: {
         type: 'object',
         properties: {
-          job: { type: 'string', description: 'Job command (e.g. /buildtt) or job name' },
+          job: { type: 'string', description: 'Job command (e.g. /build-app) or job name' },
           branch: { type: 'string', description: 'Branch to build' },
           slackChannel: { type: 'string', description: 'Slack channel to notify (optional)' },
         },
