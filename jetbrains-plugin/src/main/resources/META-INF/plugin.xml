@@ -14,11 +14,24 @@
     <ul>
         <li>🔑 One-time Jenkins login with API token</li>
         <li>📋 Auto-discover all Jenkins jobs</li>
+        <li>📂 Grouped jobs by prefix with collapsible sections</li>
+        <li>🔍 Inline search — filter jobs in real-time</li>
+        <li>📌 Pin/unpin jobs and groups to the top</li>
         <li>▶️ Trigger parameterized builds from tool window</li>
-        <li>📊 Build history tracking</li>
+        <li>⏹️ Stop running builds directly from history</li>
+        <li>📊 Live build summary with console output</li>
+        <li>📜 Build history with running/completed status</li>
         <li>🔔 Slack DM notifications</li>
-        <li>🔄 Continuous Integration workflow from IDE</li>
-        <li>🚀 Continuous Deployment pipeline trigger</li>
+        <li>🔒 OWASP-hardened security (SSRF, XSS, input validation)</li>
+    </ul>
+
+    <h3>Security</h3>
+    <ul>
+        <li>Credentials stored in OS keychain (PasswordSafe) — never plaintext</li>
+        <li>SSRF protection — private IPs and metadata endpoints blocked</li>
+        <li>Input validation — build params allowlisted, reserved keys blocked</li>
+        <li>Error sanitization — credentials never leak in error messages</li>
+        <li>Request timeouts on all HTTP calls</li>
     </ul>
 
     <h3>Supported IDEs</h3>
@@ -28,7 +41,7 @@
         <li>Android Studio</li>
         <li>PyCharm</li>
         <li>GoLand</li>
-        <li>All JetBrains IDEs</li>
+        <li>All JetBrains IDEs (2023.3+)</li>
     </ul>
     ]]></description>
 
@@ -37,8 +50,11 @@
     <ul>
         <li>Initial release</li>
         <li>Jenkins login, auto-discover jobs, trigger builds</li>
+        <li>Grouped jobs with search and pin/unpin</li>
+        <li>Live build summary with console output</li>
+        <li>Stop running builds from history</li>
         <li>Slack notifications</li>
-        <li>Build history panel</li>
+        <li>OWASP security hardening (SSRF, input validation, error sanitization)</li>
     </ul>
     ]]></change-notes>
 
@@ -62,6 +78,7 @@
             <add-to-group group-id="ToolsMenu" anchor="last"/>
             <action id="BuildPilot.Login" class="com.buildpilot.actions.LoginAction" text="Login to Jenkins"/>
             <action id="BuildPilot.TriggerBuild" class="com.buildpilot.actions.TriggerBuildAction" text="Trigger Build"/>
+            <action id="BuildPilot.StopBuild" class="com.buildpilot.actions.StopBuildAction" text="Stop Build"/>
             <action id="BuildPilot.RefreshJobs" class="com.buildpilot.actions.RefreshJobsAction" text="Refresh Jobs"/>
             <action id="BuildPilot.ConnectSlack" class="com.buildpilot.actions.ConnectSlackAction" text="Connect Slack"/>
             <action id="BuildPilot.Logout" class="com.buildpilot.actions.LogoutAction" text="Logout"/>

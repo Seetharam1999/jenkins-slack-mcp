@@ -20,7 +20,7 @@ class LoginAction : AnAction() {
             jenkins.discoverJobs()
             Messages.showInfoMessage(project, "Connected as $user! ${jenkins.jobs.size} jobs found.", "BuildPilot")
         } catch (ex: Exception) {
-            Messages.showErrorDialog(project, "Login failed: ${ex.message}", "BuildPilot")
+            Messages.showErrorDialog(project, "Login failed: ${jenkins.safeErrorMessage(ex)}", "BuildPilot")
         }
     }
 }
@@ -32,6 +32,7 @@ class TriggerBuildAction : AnAction() {
         if (!jenkins.isLoggedIn) { Messages.showErrorDialog(project, "Login first", "BuildPilot"); return }
 
         val jobNames = jenkins.jobs.keys.toTypedArray()
+        if (jobNames.isEmpty()) { Messages.showWarningDialog(project, "No jobs found. Refresh first.", "BuildPilot"); return }
         val selected = Messages.showEditableChooseDialog("Select job:", "BuildPilot - Trigger Build", null, jobNames, jobNames.firstOrNull() ?: "", null) ?: return
 
         try {
@@ -39,7 +40,7 @@ class TriggerBuildAction : AnAction() {
             Messages.showInfoMessage(project, "✅ $selected triggered!", "BuildPilot")
             SlackService.getInstance().notify("🚀 *$selected* triggered by ${jenkins.username}")
         } catch (ex: Exception) {
-            Messages.showErrorDialog(project, "Failed: ${ex.message}", "BuildPilot")
+            Messages.showErrorDialog(project, "Failed: ${jenkins.safeErrorMessage(ex)}", "BuildPilot")
         }
     }
 }
@@ -49,8 +50,12 @@ class RefreshJobsAction : AnAction() {
         val project = e.project ?: return
         val jenkins = JenkinsService.getInstance()
         if (!jenkins.isLoggedIn) { Messages.showErrorDialog(project, "Login first", "BuildPilot"); return }
-        jenkins.discoverJobs()
-        Messages.showInfoMessage(project, "Refreshed! ${jenkins.jobs.size} jobs.", "BuildPilot")
+        try {
+            jenkins.discoverJobs()
+            Messages.showInfoMessage(project, "Refreshed! ${jenkins.jobs.size} jobs.", "BuildPilot")
+        } catch (ex: Exception) {
+            Messages.showErrorDialog(project, "Refresh failed: ${jenkins.safeErrorMessage(ex)}", "BuildPilot")
+        }
     }
 }
 
@@ -59,8 +64,12 @@ class ConnectSlackAction : AnAction() {
         val project = e.project ?: return
         val botToken = Messages.showPasswordDialog("Slack Bot Token:", "BuildPilot - Slack") ?: return
         val userId = Messages.showInputDialog(project, "Your Slack User ID:", "BuildPilot - Slack", null) ?: return
-        SlackService.getInstance().saveBotToken(botToken, userId)
-        Messages.showInfoMessage(project, "Slack connected!", "BuildPilot")
+        try {
+            SlackService.getInstance().saveBotToken(botToken, userId)
+            Messages.showInfoMessage(project, "Slack connected!", "BuildPilot")
+        } catch (ex: Exception) {
+            Messages.showErrorDialog(project, "Failed: ${ex.message?.take(100)}", "BuildPilot")
+        }
     }
 }
 
@@ -69,5 +78,27 @@ class LogoutAction : AnAction() {
         JenkinsService.getInstance().logout()
         SlackService.getInstance().logout()
         Messages.showInfoMessage(e.project, "Logged out.", "BuildPilot")
+    }
+}
+
+class StopBuildAction : AnAction() {
+    override fun actionPerformed(e: AnActionEvent) {
+        val project = e.project ?: return
+        val jenkins = JenkinsService.getInstance()
+        if (!jenkins.isLoggedIn) { Messages.showErrorDialog(project, "Login first", "BuildPilot"); return }
+
+        val jobNames = jenkins.jobs.keys.toTypedArray()
+        if (jobNames.isEmpty()) return
+        val selected = Messages.showEditableChooseDialog("Select job to stop:", "BuildPilot - Stop Build", null, jobNames, jobNames.firstOrNull() ?: "", null) ?: return
+
+        try {
+            val build = jenkins.getLastBuild(selected)
+            if (build == null) { Messages.showWarningDialog(project, "No builds found for $selected", "BuildPilot"); return }
+            if (!build.building) { Messages.showWarningDialog(project, "$selected #${build.number} is not running.", "BuildPilot"); return }
+            jenkins.stopBuild(selected, build.number)
+            Messages.showInfoMessage(project, "⛔ $selected #${build.number} stopped.", "BuildPilot")
+        } catch (ex: Exception) {
+            Messages.showErrorDialog(project, "Stop failed: ${jenkins.safeErrorMessage(ex)}", "BuildPilot")
+        }
     }
 }
