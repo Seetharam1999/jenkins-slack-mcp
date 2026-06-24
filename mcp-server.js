@@ -111,16 +111,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'status': {
         const creds = getCredentials();
-        const jenkins = creds.jenkins ? `✅ Jenkins: ${creds.jenkins.user} @ ${creds.jenkins.baseUrl}` : '❌ Jenkins: not logged in';
-        const slack = creds.slack ? `✅ Slack: ${creds.slack.teamName}` : '❌ Slack: not logged in';
+        const jenkins = creds.jenkins ? `✅ Jenkins: ${creds.jenkins.user} @ ${creds.jenkins.baseUrl}` : '❌ Jenkins: not logged in. Use login_jenkins to connect.';
+        const slack = creds.slack ? `✅ Slack: ${creds.slack.teamName}` : '❌ Slack: not logged in. Use login_slack to connect.';
         return text(`${jenkins}\n${slack}`);
       }
 
       case 'add_job': {
+        const creds = getCredentials();
+        if (!creds.jenkins) return text('❌ Not logged into Jenkins. Use login_jenkins first.');
+
         const jobs = getJobs();
         jobs[args.command] = { path: args.jobPath, name: args.name, defaultBranch: args.defaultBranch || 'main' };
         saveJobs(jobs);
-        return text(`✅ Job registered: ${args.command} → ${args.name} (default: ${args.defaultBranch || 'main'})`);
+
+        let msg = `✅ Job registered: ${args.command} → ${args.name} (default: ${args.defaultBranch || 'main'})`;
+        if (!creds.slack) {
+          msg += `\n\n💡 Tip: Connect Slack with login_slack to get build notifications in your channels.`;
+        }
+        return text(msg);
       }
 
       case 'list_jobs': {
@@ -154,6 +162,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (args.slackChannel && creds.slack?.botToken) {
           await postToSlack(creds.slack.botToken, args.slackChannel, `🚀 ${job.name} build triggered on branch: ${branch}`);
           msg += `\n📢 Notified Slack channel: ${args.slackChannel}`;
+        } else if (args.slackChannel && !creds.slack) {
+          msg += `\n⚠️ Slack not connected. Use login_slack to enable Slack notifications.`;
+        }
+
+        // Remind to connect Slack if not logged in
+        if (!creds.slack) {
+          msg += `\n\n💡 Tip: Connect Slack with login_slack to get build notifications in your channels.`;
         }
 
         return text(msg);
