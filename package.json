@@ -1,14 +1,13 @@
 {
   "name": "jenkins-slack-mcp",
-  "version": "1.0.3",
-  "description": "MCP server to trigger Jenkins builds from any IDE with Slack notifications. Auto-configures via interactive login.",
+  "version": "2.0.0",
+  "description": "MCP server to trigger Jenkins builds from any IDE. Auto-discovers jobs, browser login, Slack DM notifications.",
   "main": "mcp-server.js",
   "bin": {
     "jenkins-slack-mcp": "mcp-server.js"
   },
   "scripts": {
-    "start": "node mcp-server.js",
-    "server": "node server.js"
+    "start": "node mcp-server.js"
   },
   "keywords": [
     "mcp",

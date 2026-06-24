@@ -1,6 +1,6 @@
 # jenkins-slack-mcp
 
-MCP server to trigger Jenkins builds from any IDE (Amazon Q, VS Code, Cursor, Claude Desktop) with Slack notifications. Zero config — login once and it remembers.
+MCP server to trigger Jenkins builds from any IDE with Slack DM notifications. Auto-discovers all jobs on login — no manual configuration.
 
 ## Install
 
@@ -10,10 +10,9 @@ npm install -g jenkins-slack-mcp
 
 ## Register in your IDE
 
-### Amazon Q (VS Code / JetBrains)
+### Amazon Q
 
-Edit `~/.aws/amazonq/mcp.json`:
-
+`~/.aws/amazonq/mcp.json`:
 ```json
 {
   "mcpServers": {
@@ -26,51 +25,40 @@ Edit `~/.aws/amazonq/mcp.json`:
 }
 ```
 
-### VS Code (Copilot / Cline / Roo)
+### VS Code
 
-Edit `.vscode/mcp.json` in your workspace:
-
+`.vscode/mcp.json`:
 ```json
 {
   "mcpServers": {
-    "jenkins-slack": {
-      "command": "jenkins-slack-mcp"
-    }
+    "jenkins-slack": { "command": "jenkins-slack-mcp" }
   }
 }
 ```
 
 ### Claude Desktop
 
-Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
-
+`~/Library/Application Support/Claude/claude_desktop_config.json` (macOS):
 ```json
 {
   "mcpServers": {
-    "jenkins-slack": {
-      "command": "jenkins-slack-mcp"
-    }
+    "jenkins-slack": { "command": "jenkins-slack-mcp" }
   }
 }
 ```
 
 ### Cursor
 
-Edit `.cursor/mcp.json` in your workspace:
-
+`.cursor/mcp.json`:
 ```json
 {
   "mcpServers": {
-    "jenkins-slack": {
-      "command": "jenkins-slack-mcp"
-    }
+    "jenkins-slack": { "command": "jenkins-slack-mcp" }
   }
 }
 ```
 
-### Without global install (npx)
-
-Use this in any of the above configs instead:
+### Without global install
 
 ```json
 {
@@ -83,72 +71,130 @@ Use this in any of the above configs instead:
 }
 ```
 
-## First-time Setup (from IDE chat)
+---
 
-Once the MCP is registered, use these tools from your IDE chat:
+## Flow of Work
 
-### 1. Login to Jenkins
+```
+┌─────────────────────────────────────────────────────────┐
+│  1. login_jenkins (baseUrl only)                        │
+│     → Opens browser to Jenkins token page               │
+│     → User copies API token + build trigger token       │
+│                                                         │
+│  2. login_jenkins (all params)                          │
+│     → Validates credentials                             │
+│     → Auto-discovers ALL jobs from Jenkins              │
+│     → Stores securely at ~/.jenkins-slack-mcp/          │
+│                                                         │
+│  3. list_jobs / list_jobs filter="tms"                  │
+│     → Shows jobs in table with status (✅ ❌ ⏸️)        │
+│                                                         │
+│  4. job_details jobName="my-job"                        │
+│     → Shows all parameters (name, type, default,        │
+│       choices) in table format                          │
+│                                                         │
+│  5. trigger_build jobName="my-job" params={...}         │
+│     → Triggers build with params                        │
+│     → Sends Slack DM to you (if configured)             │
+│     → Posts to channel (if notifyChannel provided)      │
+│                                                         │
+│  (Optional) setup_slack                                 │
+│     → Configure bot token + your Slack User ID          │
+│     → Get DM notifications on every build trigger       │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Usage
+
+### Step 1: Login to Jenkins
+
+First time — just provide the URL, browser opens automatically:
+```
+login_jenkins baseUrl="https://jenkins.example.com"
+```
+→ Browser opens Jenkins → Copy your API token and build trigger token.
+
+Then login with full credentials:
 ```
 login_jenkins:
   baseUrl: https://jenkins.example.com
   user: your_username
   apiToken: your_api_token
-  buildToken: your_remote_trigger_token
+  buildToken: your_build_trigger_token
+```
+→ All jobs auto-discovered!
+
+### Step 2: Browse Jobs
+
+```
+list_jobs                    # all jobs
+list_jobs filter="tms"       # filter by name
 ```
 
-### 2. Login to Slack (optional, for notifications)
-```
-login_slack:
-  clientId: your_slack_app_client_id
-  clientSecret: your_slack_app_client_secret
-```
-Opens browser → OAuth → done.
+Output:
+| # | Job Name | Status |
+|---|----------|--------|
+| 1 | tms-docker-build-new | ✅ Success |
+| 2 | tms-constants | ✅ Success |
+| 3 | TMS-version-update | ✅ Success |
 
-### 3. Register Jobs
+### Step 3: Check Parameters
+
 ```
-add_job:
-  command: /build-backend
-  jobPath: /job/my-backend-service
-  name: Backend Service
-  defaultBranch: main
+job_details jobName="tms-docker-build-new"
 ```
 
-### 4. Trigger Builds
+Output:
+| Parameter | Type | Default | Choices | Description |
+|-----------|------|---------|---------|-------------|
+| BRANCH | String | main | - | Branch to build |
+
+### Step 4: Trigger Build
+
 ```
-trigger_build:
-  job: /build-backend
-  branch: feature/my-branch
-  slackChannel: #deployments
+trigger_build jobName="tms-docker-build-new" params={"BRANCH": "feature/xyz"}
 ```
+
+### Step 5 (Optional): Setup Slack DMs
+
+```
+setup_slack:
+  botToken: xoxb-your-bot-token
+  userId: U0123456789
+```
+
+**How to get your Slack User ID:**
+1. Open Slack → Click your profile picture
+2. Click "Profile" → Click "..." (more)
+3. Click "Copy Member ID"
+
+**How to get bot token:**
+1. Go to https://api.slack.com/apps → Your App
+2. OAuth & Permissions → Bot User OAuth Token (starts with `xoxb-`)
+
+After setup, every `trigger_build` sends you a DM automatically.
+
+---
 
 ## Available Tools
 
 | Tool | Description |
 |------|-------------|
-| `login_jenkins` | Authenticate with Jenkins |
-| `login_slack` | OAuth login to Slack (opens browser) |
-| `status` | Check login status |
-| `whoami` | Get user details from both services |
-| `add_job` | Register a Jenkins job |
-| `list_jobs` | Show registered jobs |
-| `trigger_build` | Build + optional Slack notify |
-| `logout` | Clear stored credentials |
+| `login_jenkins` | Login + auto-discover jobs (opens browser for new users) |
+| `setup_slack` | Configure Slack bot token + User ID for DM notifications |
+| `status` | Check login status + job count |
+| `list_jobs` | All jobs in table format (filterable) |
+| `job_details` | Show parameters for a job |
+| `trigger_build` | Trigger build + Slack DM + channel notify |
+| `refresh_jobs` | Re-fetch jobs from Jenkins |
+| `whoami` | Current user details |
+| `logout` | Clear all credentials |
 
 ## Credentials
 
-Stored at `~/.jenkins-slack-mcp/config.json` (600 permissions, owner-only). Shared across all IDEs.
-
-## Slack Slash Commands (bonus)
-
-If you also want `/build-app main` from Slack directly:
-
-```bash
-node server.js
-# Expose with ngrok:
-ngrok http 3001
-```
-
-Set Slack app slash command URL to `https://your-ngrok-url/slack/command`
+Stored at `~/.jenkins-slack-mcp/config.json` (600 permissions, owner-only).
 
 ## Author
 

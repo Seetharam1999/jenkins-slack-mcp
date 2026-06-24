@@ -22,10 +22,7 @@ function saveConfig(config) {
 
 function getCredentials() {
   const config = loadConfig();
-  return {
-    jenkins: config.jenkins || null,
-    slack: config.slack || null,
-  };
+  return { jenkins: config.jenkins || null, slack: config.slack || null };
 }
 
 function saveJenkinsCredentials({ baseUrl, user, apiToken, buildToken }) {
@@ -34,9 +31,9 @@ function saveJenkinsCredentials({ baseUrl, user, apiToken, buildToken }) {
   saveConfig(config);
 }
 
-function saveSlackCredentials({ botToken, userToken, teamName, userName }) {
+function saveSlackConfig({ botToken, userId }) {
   const config = loadConfig();
-  config.slack = { botToken, userToken, teamName, userName };
+  config.slack = { botToken, userId };
   saveConfig(config);
 }
 
@@ -51,13 +48,8 @@ function getJobs() {
   return config.jobs || {};
 }
 
-function isConfigured() {
-  const creds = getCredentials();
-  return !!(creds.jenkins && creds.slack);
-}
-
 function clearAll() {
   if (fs.existsSync(CONFIG_FILE)) fs.unlinkSync(CONFIG_FILE);
 }
 
-module.exports = { getCredentials, saveJenkinsCredentials, saveSlackCredentials, saveJobs, getJobs, isConfigured, clearAll };
+module.exports = { getCredentials, saveJenkinsCredentials, saveSlackConfig, saveJobs, getJobs, clearAll };
