@@ -80,15 +80,38 @@ class BuildSummaryPanel {
     const headers = { Authorization: 'Basic ' + Buffer.from(`${creds.user}:${creds.apiToken}`).toString('base64') };
     this._setShell(jobName, branch);
 
-    // If no build number provided, resolve it from lastBuild of THIS specific job
     let targetBuild = buildNumber;
+
     if (!targetBuild) {
-      // Wait for Jenkins to register, then lock onto the last build of this job
-      await new Promise(r => setTimeout(r, 3000));
+      // Get current lastBuild number BEFORE our new build registers
+      let prevBuildNum = null;
       try {
-        const info = await fetchJson(`${creds.baseUrl}${job.path}/lastBuild/api/json?tree=number`, headers);
-        if (info?.number) targetBuild = info.number;
+        const prev = await fetchJson(`${creds.baseUrl}${job.path}/lastBuild/api/json?tree=number`, headers);
+        prevBuildNum = prev?.number || null;
       } catch {}
+
+      // Poll until a NEW build number appears or a building state is found
+      for (let i = 0; i < 15; i++) {
+        await new Promise(r => setTimeout(r, 2000));
+        try {
+          const info = await fetchJson(`${creds.baseUrl}${job.path}/lastBuild/api/json?tree=number,building`, headers);
+          if (info?.number && info.number !== prevBuildNum) {
+            targetBuild = info.number;
+            break;
+          }
+          if (info?.building && info?.number) {
+            targetBuild = info.number;
+            break;
+          }
+        } catch {}
+      }
+      // Final fallback
+      if (!targetBuild) {
+        try {
+          const fb = await fetchJson(`${creds.baseUrl}${job.path}/lastBuild/api/json?tree=number`, headers);
+          targetBuild = fb?.number;
+        } catch {}
+      }
     }
 
     const poll = async () => {
