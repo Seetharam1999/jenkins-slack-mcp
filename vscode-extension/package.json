@@ -44,12 +44,14 @@
       { "command": "buildpilot.clearSearch", "title": "BuildPilot: Clear Search", "icon": "$(close)" },
       { "command": "buildpilot.openSettings", "title": "BuildPilot: Settings", "icon": "$(gear)" },
       { "command": "buildpilot.stopBuild", "title": "Stop Build", "icon": "$(debug-stop)" },
+      { "command": "buildpilot.clearHistory", "title": "BuildPilot: Clear History", "icon": "$(trash)" },
       { "command": "buildpilot.logout", "title": "BuildPilot: Logout" }
     ],
     "menus": {
       "view/title": [
         { "command": "buildpilot.refreshJobs", "when": "view == buildpilot.jobs", "group": "navigation" },
-        { "command": "buildpilot.openSettings", "when": "view == buildpilot.jobs", "group": "navigation" }
+        { "command": "buildpilot.openSettings", "when": "view == buildpilot.jobs", "group": "navigation" },
+        { "command": "buildpilot.clearHistory", "when": "view == buildpilot.history", "group": "navigation" }
       ],
       "view/item/context": [
         { "command": "buildpilot.pinJob", "when": "view == buildpilot.jobs && viewItem == job", "group": "inline" },

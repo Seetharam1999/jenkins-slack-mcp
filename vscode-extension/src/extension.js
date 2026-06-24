@@ -41,7 +41,8 @@ function activate(context) {
     vscode.commands.registerCommand('buildpilot.openSettings', () => {
       vscode.commands.executeCommand('workbench.action.openSettings', 'buildpilot');
     }),
-    vscode.commands.registerCommand('buildpilot.stopBuild', (item) => stopBuildFromHistory(item))
+    vscode.commands.registerCommand('buildpilot.stopBuild', (item) => stopBuildFromHistory(item)),
+    vscode.commands.registerCommand('buildpilot.clearHistory', () => { historyProvider.clear(); })
   );
 
   if (!jenkinsService.isLoggedIn()) {
@@ -132,10 +133,14 @@ async function triggerBuild(item, context) {
   if (branch === undefined) return;
 
   try {
+    // Capture current lastBuild number BEFORE triggering
+    const prevBuild = await jenkinsService.getLastBuildNumber(jobName);
+    const prevBuildNumber = prevBuild?.number || null;
+
     await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `🚀 ${jobName} → ${branch}` }, async () => {
       await jenkinsService.triggerBuild(jobName, { BRANCH: branch });
     });
-    historyProvider.addEntry(jobName, `BRANCH=${branch}`);
+    historyProvider.addEntry(jobName, `BRANCH=${branch}`, prevBuildNumber);
     vscode.window.showInformationMessage(`✅ ${jobName} triggered → ${branch}`);
     BuildSummaryPanel.show(context, jenkinsService, jobName, branch);
 
@@ -281,20 +286,22 @@ async function stopBuildFromHistory(item) {
     return;
   }
   const jobName = item?.jobName;
+  const buildNumber = item?.buildNumber;
   if (!jobName) return;
 
+  if (!buildNumber) {
+    vscode.window.showWarningMessage(`BuildPilot: Build number not resolved yet for ${jobName}. Try again in a few seconds.`);
+    return;
+  }
+
   try {
-    const lastBuild = await jenkinsService.getLastBuildNumber(jobName);
-    if (!lastBuild) {
-      vscode.window.showWarningMessage(`BuildPilot: No builds found for ${jobName}`);
+    const build = await jenkinsService.getBuildInfo(jobName, buildNumber);
+    if (!build || !build.building) {
+      vscode.window.showWarningMessage(`BuildPilot: ${jobName} #${buildNumber} is not running.`);
       return;
     }
-    if (!lastBuild.building) {
-      vscode.window.showWarningMessage(`BuildPilot: ${jobName} #${lastBuild.number} is not running.`);
-      return;
-    }
-    await jenkinsService.cancelBuild(jobName, lastBuild.number);
-    vscode.window.showInformationMessage(`⛔ ${jobName} #${lastBuild.number} stopped.`);
+    await jenkinsService.cancelBuild(jobName, buildNumber);
+    vscode.window.showInformationMessage(`⛔ ${jobName} #${buildNumber} stopped.`);
   } catch (err) {
     vscode.window.showErrorMessage(`BuildPilot: Stop failed - ${err.message}`);
   }

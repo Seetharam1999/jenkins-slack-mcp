@@ -114,6 +114,15 @@ class JenkinsService {
     } catch { return null; }
   }
 
+  async getBuildInfo(jobName, buildNumber) {
+    const job = this.jobs[jobName];
+    if (!job || !buildNumber) return null;
+    const { baseUrl, user, apiToken } = this._creds;
+    try {
+      return await request(`${baseUrl}${job.path}/${buildNumber}/api/json?tree=number,building,result`, { headers: authHeaders(user, apiToken), timeout: 10000 });
+    } catch { return null; }
+  }
+
   async cancelBuild(jobName, buildNumber) {
     const job = this.jobs[jobName];
     if (!job) throw new Error(`Job "${jobName}" not found`);

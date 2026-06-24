@@ -7,87 +7,88 @@ class HistoryTreeProvider {
     this._onDidChangeTreeData = new vscode.EventEmitter();
     this.onDidChangeTreeData = this._onDidChangeTreeData.event;
     this.history = context.globalState.get('buildpilot.history', []);
-    this._pollers = new Map(); // id -> interval
-    
-    // On load, mark old "running" entries as unknown (will be checked once)
+    this._pollers = new Map();
     this._reconcileOnLoad();
   }
 
   refresh() { this._onDidChangeTreeData.fire(); }
 
   _reconcileOnLoad() {
-    // Check stale running entries once after credentials load
     setTimeout(async () => {
       if (!this.jenkins.isLoggedIn()) return;
       let changed = false;
       for (const entry of this.history) {
         if (entry.status !== 'running') continue;
+        if (!entry.buildNumber) { entry.status = 'done'; changed = true; continue; }
         try {
-          const build = await this.jenkins.getLastBuildNumber(entry.jobName);
+          const build = await this.jenkins.getBuildInfo(entry.jobName, entry.buildNumber);
           if (!build || !build.building) {
             entry.status = 'done';
-            entry.buildNumber = build?.number;
             changed = true;
           } else {
-            // Still running — start polling
-            this._pollStatus(entry);
+            this._pollEntry(entry);
           }
         } catch {
           entry.status = 'done';
           changed = true;
         }
       }
-      if (changed) {
-        this.context.globalState.update('buildpilot.history', this.history);
-        this.refresh();
-      }
+      if (changed) { this._save(); this.refresh(); }
     }, 2000);
   }
 
-  addEntry(jobName, params) {
+  /**
+   * @param {string} jobName
+   * @param {string} params
+   * @param {number|null} prevBuildNumber - the lastBuild number BEFORE trigger
+   */
+  addEntry(jobName, params, prevBuildNumber) {
     const id = `${jobName}-${Date.now()}`;
-    const entry = { id, jobName, params, time: new Date().toLocaleString(), status: 'running', buildNumber: null };
+    const entry = { id, jobName, params, time: new Date().toLocaleString(), status: 'running', buildNumber: null, prevBuildNumber };
     this.history.unshift(entry);
     if (this.history.length > 50) this.history = this.history.slice(0, 50);
-    this.context.globalState.update('buildpilot.history', this.history);
+    this._save();
     this.refresh();
-    this._resolveBuildNumber(entry);
+    this._resolveAndPoll(entry);
   }
 
-  async _resolveBuildNumber(entry) {
-    // Wait for Jenkins to register the build, then grab its number
-    await new Promise(r => setTimeout(r, 4000));
-    if (!this.jenkins.isLoggedIn()) return;
-    try {
-      const build = await this.jenkins.getLastBuildNumber(entry.jobName);
-      if (build) {
-        entry.buildNumber = build.number;
-        this.context.globalState.update('buildpilot.history', this.history);
-        this.refresh();
-      }
-    } catch {}
-    this._pollStatus(entry);
-  }
+  async _resolveAndPoll(entry) {
+    // Poll until a build number GREATER than prevBuildNumber appears
+    // Also must not match any already-assigned number in history
+    const prev = entry.prevBuildNumber || 0;
+    const assignedNumbers = new Set(this.history.filter(e => e.jobName === entry.jobName && e.buildNumber).map(e => e.buildNumber));
 
-  _pollStatus(entry) {
-    if (this._pollers.has(entry.id)) return;
-    const interval = setInterval(async () => {
-      if (!this.jenkins.isLoggedIn()) { this._clearPoller(entry.id); return; }
+    for (let i = 0; i < 20; i++) {
+      await new Promise(r => setTimeout(r, 2000));
+      if (!this.jenkins.isLoggedIn()) return;
       try {
         const build = await this.jenkins.getLastBuildNumber(entry.jobName);
-        if (build && !build.building) {
-          entry.status = 'done';
+        if (build && build.number > prev && !assignedNumbers.has(build.number)) {
           entry.buildNumber = build.number;
-          this.context.globalState.update('buildpilot.history', this.history);
+          this._save();
+          this.refresh();
+          break;
+        }
+      } catch {}
+    }
+    if (entry.buildNumber) this._pollEntry(entry);
+  }
+
+  _pollEntry(entry) {
+    if (this._pollers.has(entry.id)) return;
+    const interval = setInterval(async () => {
+      if (!this.jenkins.isLoggedIn() || !entry.buildNumber) { this._clearPoller(entry.id); return; }
+      try {
+        const build = await this.jenkins.getBuildInfo(entry.jobName, entry.buildNumber);
+        if (!build || !build.building) {
+          entry.status = 'done';
+          this._save();
           this._clearPoller(entry.id);
           this.refresh();
-        } else if (build && !entry.buildNumber) {
-          entry.buildNumber = build.number;
         }
       } catch { this._clearPoller(entry.id); }
-    }, 10000);
+    }, 8000);
     this._pollers.set(entry.id, interval);
-    // Auto-stop after 30 min
     setTimeout(() => this._clearPoller(entry.id), 30 * 60 * 1000);
   }
 
@@ -96,10 +97,12 @@ class HistoryTreeProvider {
     if (interval) { clearInterval(interval); this._pollers.delete(id); }
   }
 
+  _save() { this.context.globalState.update('buildpilot.history', this.history); }
+
   clear() {
     for (const [id] of this._pollers) this._clearPoller(id);
     this.history = [];
-    this.context.globalState.update('buildpilot.history', []);
+    this._save();
     this.refresh();
   }
 
@@ -109,12 +112,16 @@ class HistoryTreeProvider {
     if (!this.history.length) return [new vscode.TreeItem('No builds yet')];
     return this.history.map(entry => {
       const isRunning = entry.status === 'running';
-      const buildLabel = entry.buildNumber ? ` #${entry.buildNumber}` : '';
-      const item = new vscode.TreeItem(`${entry.jobName}${buildLabel} (${entry.params})`);
+      const buildLabel = entry.buildNumber ? ` #${entry.buildNumber}` : ' (queued)';
+      const label = `${entry.jobName}${buildLabel} (${entry.params})`;
+      const item = new vscode.TreeItem(label);
+      // Unique ID so VS Code re-renders when buildNumber changes
+      item.id = `${entry.id}-${entry.buildNumber || 'pending'}`;
       item.description = entry.time;
       item.iconPath = new vscode.ThemeIcon(isRunning ? 'loading~spin' : 'check');
       item.contextValue = isRunning ? 'historyRunning' : 'historyDone';
       item.jobName = entry.jobName;
+      item.buildNumber = entry.buildNumber;
       item.command = {
         command: 'buildpilot.showBuildSummary',
         title: 'Show Build Summary',
