@@ -21,10 +21,13 @@ class SearchViewProvider {
   }
 
   _getHtml() {
+    const nonce = require('crypto').randomBytes(16).toString('base64');
+    const csp = `default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';`;
     return `<!DOCTYPE html>
 <html>
 <head>
-<style>
+<meta http-equiv="Content-Security-Policy" content="${csp}">
+<style nonce="${nonce}">
   body { margin: 0; padding: 6px; font-family: var(--vscode-font-family); background: var(--vscode-sideBar-background); }
   .search-wrap { display: flex; gap: 4px; }
   input {
@@ -45,9 +48,9 @@ class SearchViewProvider {
 <body>
   <div class="search-wrap">
     <input id="search" type="text" placeholder="Filter jobs..." />
-    <button class="clear-btn" id="clearBtn">✕</button>
+    <button class="clear-btn" id="clearBtn">&#10005;</button>
   </div>
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     const input = document.getElementById('search');
     const clearBtn = document.getElementById('clearBtn');
