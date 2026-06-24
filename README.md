@@ -84,7 +84,7 @@ npm install -g jenkins-slack-mcp
 │  2. login_jenkins (all params)                          │
 │     → Validates credentials                             │
 │     → Auto-discovers ALL jobs from Jenkins              │
-│     → Stores securely at ~/.jenkins-slack-mcp/          │
+│     → Stores encrypted at ~/.jenkins-slack-mcp/         │
 │                                                         │
 │  3. list_jobs / list_jobs filter="tms"                  │
 │     → Shows jobs in table with status (✅ ❌ ⏸️)        │
@@ -97,10 +97,6 @@ npm install -g jenkins-slack-mcp
 │     → Triggers build with params                        │
 │     → Sends Slack DM to you (if configured)             │
 │     → Posts to channel (if notifyChannel provided)      │
-│                                                         │
-│  (Optional) setup_slack                                 │
-│     → Configure bot token + your Slack User ID          │
-│     → Get DM notifications on every build trigger       │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -137,8 +133,8 @@ Output:
 | # | Job Name | Status |
 |---|----------|--------|
 | 1 | build-main | ✅ Success |
-| 2 | lib-packahges | ✅ Success |
-| 3 | job-constant| ✅ Success |
+| 2 | lib-packages | ✅ Success |
+| 3 | job-constant | ✅ Success |
 
 ### Step 3: Check Parameters
 
@@ -192,9 +188,58 @@ After setup, every `trigger_build` sends you a DM automatically.
 | `whoami` | Current user details |
 | `logout` | Clear all credentials |
 
+---
+
+## Security
+
+BuildPilot follows OWASP security best practices:
+
+### Credential Storage
+- All credentials (API tokens, Slack tokens) are **encrypted at rest** using AES-256-GCM
+- Encryption key is machine-bound (derived from hostname + user identity)
+- Config file stored with `600` permissions (owner-read/write only)
+- Atomic file writes prevent data corruption and race conditions
+
+### Network Security
+- **SSRF Protection** — Private IPs, loopback, link-local, and cloud metadata endpoints (169.254.169.254) are blocked
+- **TLS enforced** — Only HTTP/HTTPS protocols allowed
+- **Request timeouts** — All HTTP calls have strict timeouts (10-30s)
+- **Redirect protection** — Auth headers stripped on redirects
+
+### Input Validation
+- Build parameter names validated against allowlist (`[a-zA-Z0-9_\-.]`)
+- Reserved parameter keys (`token`, `cause`, `json`, `submit`) are blocked to prevent injection
+- Parameter values capped at 1000 characters
+- Jenkins URL validated and sanitized before use
+
+### OAuth Security
+- OAuth callback server binds to `127.0.0.1` only (not `0.0.0.0`)
+- CSRF state parameter uses `crypto.randomBytes(32)`
+- Timing-safe comparison for state validation
+- Rate limiting on callback endpoint (max 5 attempts)
+- Auto-timeout after 2 minutes
+- All non-callback routes rejected with 404
+
+### Error Handling
+- Error messages sanitized to prevent credential leakage
+- URLs, auth headers, and tokens are redacted from error output
+- Error messages truncated to 200 characters
+
+---
+
+## VS Code Extension
+
+See [vscode-extension/README.md](./vscode-extension/README.md) for the full-featured VS Code extension with:
+- Inline search, grouped jobs, pin/unpin
+- Live build summary webview
+- Stop running builds from history
+- Slack notifications
+
+---
+
 ## Credentials
 
-Stored at `~/.jenkins-slack-mcp/config.json` (600 permissions, owner-only).
+Stored encrypted at `~/.jenkins-slack-mcp/config.enc` (AES-256-GCM, 600 permissions, owner-only).
 
 ## Author
 
