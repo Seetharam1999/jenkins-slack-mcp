@@ -23,6 +23,7 @@
     },
     "views": {
       "buildpilot": [
+        { "id": "buildpilot.search", "name": "Search", "type": "webview" },
         { "id": "buildpilot.jobs", "name": "Jobs" },
         { "id": "buildpilot.history", "name": "Build History" }
       ]
@@ -30,10 +31,32 @@
     "commands": [
       { "command": "buildpilot.login", "title": "BuildPilot: Login to Jenkins" },
       { "command": "buildpilot.triggerBuild", "title": "BuildPilot: Trigger Build" },
-      { "command": "buildpilot.refreshJobs", "title": "BuildPilot: Refresh Jobs" },
+      { "command": "buildpilot.refreshJobs", "title": "BuildPilot: Refresh Jobs", "icon": "$(refresh)" },
       { "command": "buildpilot.connectSlack", "title": "BuildPilot: Connect Slack" },
+      { "command": "buildpilot.multiTrigger", "title": "BuildPilot: Trigger Multiple Jobs" },
+      { "command": "buildpilot.cancelBuild", "title": "BuildPilot: Cancel Build" },
+      { "command": "buildpilot.showBuildSummary", "title": "BuildPilot: Show Build Summary" },
+      { "command": "buildpilot.pinJob", "title": "Pin Job", "icon": "$(pin)" },
+      { "command": "buildpilot.unpinJob", "title": "Unpin Job", "icon": "$(pinned)" },
+      { "command": "buildpilot.pinGroup", "title": "Pin Group", "icon": "$(pin)" },
+      { "command": "buildpilot.unpinGroup", "title": "Unpin Group", "icon": "$(pinned)" },
+      { "command": "buildpilot.searchJobs", "title": "BuildPilot: Search Jobs", "icon": "$(search)" },
+      { "command": "buildpilot.clearSearch", "title": "BuildPilot: Clear Search", "icon": "$(close)" },
+      { "command": "buildpilot.openSettings", "title": "BuildPilot: Settings", "icon": "$(gear)" },
       { "command": "buildpilot.logout", "title": "BuildPilot: Logout" }
     ],
+    "menus": {
+      "view/title": [
+        { "command": "buildpilot.refreshJobs", "when": "view == buildpilot.jobs", "group": "navigation" },
+        { "command": "buildpilot.openSettings", "when": "view == buildpilot.jobs", "group": "navigation" }
+      ],
+      "view/item/context": [
+        { "command": "buildpilot.pinJob", "when": "view == buildpilot.jobs && viewItem == job", "group": "inline" },
+        { "command": "buildpilot.unpinJob", "when": "view == buildpilot.jobs && viewItem == pinnedJob", "group": "inline" },
+        { "command": "buildpilot.pinGroup", "when": "view == buildpilot.jobs && viewItem == group", "group": "inline" },
+        { "command": "buildpilot.unpinGroup", "when": "view == buildpilot.jobs && viewItem == pinnedGroup", "group": "inline" }
+      ]
+    },
     "configuration": {
       "title": "BuildPilot",
       "properties": {
