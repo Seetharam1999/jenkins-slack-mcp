@@ -136,9 +136,9 @@ list_jobs filter="tms"       # filter by name
 Output:
 | # | Job Name | Status |
 |---|----------|--------|
-| 1 | tms-docker-build-new | ✅ Success |
-| 2 | tms-constants | ✅ Success |
-| 3 | TMS-version-update | ✅ Success |
+| 1 | build-main | ✅ Success |
+| 2 | lib-packahges | ✅ Success |
+| 3 | job-constant| ✅ Success |
 
 ### Step 3: Check Parameters
 
