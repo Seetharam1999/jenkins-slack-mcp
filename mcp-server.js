@@ -4,9 +4,9 @@ const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio
 const { CallToolRequestSchema, ListToolsRequestSchema } = require('@modelcontextprotocol/sdk/types.js');
 const { getCredentials, saveJenkinsCredentials, saveSlackConfig, saveJobs, getJobs, clearAll } = require('./auth/credentials');
 const { openJenkinsTokenPage, validateAndFetchUser, fetchAllJobs, fetchJobParams, triggerBuild } = require('./auth/jenkins-auth');
-const { sendSlackDM, postToChannel } = require('./auth/slack-auth');
+const { slackOAuthLogin, sendSlackDM, postToChannel } = require('./auth/slack-auth');
 
-const server = new Server({ name: 'jenkins-slack-mcp', version: '1.0.4' }, { capabilities: { tools: {} } });
+const server = new Server({ name: 'jenkins-slack-mcp', version: '2.1.0' }, { capabilities: { tools: {} } });
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
@@ -25,16 +25,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
-      name: 'setup_slack',
-      description: 'Configure Slack notifications. Set bot token and your Slack User ID to receive DMs on build trigger.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          botToken: { type: 'string', description: 'Slack Bot OAuth Token (xoxb-...)' },
-          userId: { type: 'string', description: 'Your Slack User ID (found in Profile → ... → Copy Member ID)' },
-        },
-        required: ['botToken', 'userId'],
-      },
+      name: 'login_slack',
+      description: 'Login to Slack via OAuth. Opens browser for authorization. Requires SLACK_CLIENT_ID and SLACK_CLIENT_SECRET env vars.',
+      inputSchema: { type: 'object', properties: {} },
     },
     {
       name: 'status',
@@ -139,20 +132,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         const creds = getCredentials();
         if (!creds.slack) {
-          msg += `\n\n💡 Set up Slack notifications with **setup_slack** to get DMs on build trigger.`;
+          msg += `\n\n💡 Use **login_slack** to connect Slack and get DM notifications on build trigger.`;
         }
         return text(msg);
       }
 
-      case 'setup_slack': {
-        saveSlackConfig({ botToken: args.botToken, userId: args.userId });
+      case 'login_slack': {
+        const { botToken, userId } = await slackOAuthLogin(process.env.SLACK_CLIENT_ID, process.env.SLACK_CLIENT_SECRET);
+        saveSlackConfig({ botToken, userId });
 
-        // Test by sending a welcome DM
         try {
-          await sendSlackDM(args.botToken, args.userId, '✅ Jenkins-Slack MCP connected! You will receive build notifications here.');
-          return text(`✅ Slack configured!\n- User ID: ${args.userId}\n- ✉️ Test DM sent to you successfully.`);
+          await sendSlackDM(botToken, userId, '✅ Jenkins-Slack MCP connected! You will receive build notifications here.');
+          return text(`✅ Slack connected via OAuth!\n- User ID: ${userId}\n- ✉️ Test DM sent successfully.`);
         } catch (err) {
-          return text(`⚠️ Slack config saved but test DM failed: ${err.message}\nCheck your bot token and user ID.`);
+          return text(`✅ Slack OAuth successful (User: ${userId}) but test DM failed: ${err.message}`);
         }
       }
 
@@ -164,7 +157,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           : '❌ Jenkins: not logged in. Use **login_jenkins** to connect.';
         const slack = creds.slack
           ? `✅ Slack: User ID ${creds.slack.userId} (DM notifications enabled)`
-          : '❌ Slack: not configured. Use **setup_slack** to enable notifications.';
+          : '❌ Slack: not configured. Use **login_slack** to enable notifications.';
         return text(`${jenkins}\n${slack}\n📋 Jobs available: ${jobCount}`);
       }
 
@@ -267,7 +260,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
 
         if (!creds.slack) {
-          msg += `\n\n💡 Set up **setup_slack** to get DM notifications on every build.`;
+          msg += `\n\n💡 Use **login_slack** to get DM notifications on every build.`;
         }
 
         return text(msg);

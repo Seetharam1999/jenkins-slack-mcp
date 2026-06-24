@@ -1,5 +1,5 @@
 const axios = require('axios');
-e readconst open = require('open');
+const open = require('open');
 
 async function openJenkinsTokenPage(baseUrl) {
   const tokenUrl = `${baseUrl}/me/configure`;
