@@ -5,3 +5,5 @@ node_modules/
 .gitnexus/
 AGENTS.md
 CLAUDE.md
+vscode-extension/
+jetbrains-plugin/

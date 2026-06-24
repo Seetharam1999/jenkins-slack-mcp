@@ -1,134 +1,103 @@
-const axios = require('axios');
-const open = require('open');
+const https = require('https');
+const http = require('http');
 const { URL } = require('url');
+const { exec } = require('child_process');
 
-// Block private/internal IPs to prevent SSRF
 const BLOCKED_HOSTS = [
-  /^127\./,
-  /^10\./,
-  /^172\.(1[6-9]|2\d|3[01])\./,
-  /^192\.168\./,
-  /^169\.254\./,
-  /^0\./,
-  /^localhost$/i,
-  /^::1$/,
-  /^fc00:/i,
-  /^fe80:/i,
+  /^127\./, /^10\./, /^172\.(1[6-9]|2\d|3[01])\./, /^192\.168\./,
+  /^169\.254\./, /^0\./, /^localhost$/i, /^::1$/, /^fc00:/i, /^fe80:/i,
 ];
 
 function validateBaseUrl(baseUrl) {
-  if (!baseUrl || typeof baseUrl !== 'string') {
-    throw new Error('Invalid Jenkins URL');
-  }
-
+  if (!baseUrl || typeof baseUrl !== 'string') throw new Error('Invalid Jenkins URL');
   let parsed;
-  try {
-    parsed = new URL(baseUrl);
-  } catch {
-    throw new Error('Invalid URL format. Must be a valid URL (e.g. https://jenkins.example.com)');
-  }
-
-  // Enforce HTTPS in production (allow HTTP only for localhost dev)
-  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
-    throw new Error('Only HTTP/HTTPS protocols are allowed');
-  }
-
-  const hostname = parsed.hostname;
-
-  // Block metadata endpoints and private ranges
-  for (const pattern of BLOCKED_HOSTS) {
-    if (pattern.test(hostname)) {
-      throw new Error('Connection to private/internal networks is not allowed');
-    }
-  }
-
-  // Block AWS/GCP/Azure metadata endpoints
-  if (hostname === '169.254.169.254' || hostname === 'metadata.google.internal') {
-    throw new Error('Connection to cloud metadata endpoints is not allowed');
-  }
-
-  return parsed.origin; // Returns sanitized URL without path/query
+  try { parsed = new URL(baseUrl); } catch { throw new Error('Invalid URL format'); }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') throw new Error('Only HTTP/HTTPS allowed');
+  for (const p of BLOCKED_HOSTS) { if (p.test(parsed.hostname)) throw new Error('Private/internal networks blocked'); }
+  return parsed.origin;
 }
 
-function safeAxiosConfig(user, apiToken) {
-  return {
-    auth: { username: user, password: apiToken },
-    timeout: 30000,
-    maxRedirects: 3,
-    // Prevent credential leakage in redirects
-    beforeRedirect: (options) => {
-      delete options.auth;
-    },
-  };
+function request(url, opts = {}) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const mod = parsed.protocol === 'https:' ? https : http;
+    const req = mod.request(url, {
+      method: opts.method || 'GET',
+      headers: opts.headers || {},
+      timeout: opts.timeout || 15000,
+    }, (res) => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        if (res.statusCode >= 400 && res.statusCode !== 201) reject(new Error(`HTTP ${res.statusCode}`));
+        else { try { resolve(JSON.parse(data)); } catch { resolve(data); } }
+      });
+    });
+    req.on('timeout', () => { req.destroy(); reject(new Error('Request timeout')); });
+    req.on('error', reject);
+    if (opts.method === 'POST') req.end();
+    else req.end();
+  });
 }
 
-async function openJenkinsTokenPage(baseUrl) {
-  const validUrl = validateBaseUrl(baseUrl);
-  const tokenUrl = `${validUrl}/me/configure`;
-  await open(tokenUrl);
-  return tokenUrl;
+function authHeaders(user, apiToken) {
+  return { Authorization: 'Basic ' + Buffer.from(`${user}:${apiToken}`).toString('base64') };
 }
 
-async function validateAndFetchUser(baseUrl, user, apiToken) {
-  const validUrl = validateBaseUrl(baseUrl);
-  const resp = await axios.get(`${validUrl}/me/api/json`, safeAxiosConfig(user, apiToken));
-  return { fullName: resp.data.fullName, id: resp.data.id };
+function openUrl(url) {
+  const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
+  exec(`${cmd} "${url}"`);
 }
 
-async function fetchAllJobs(baseUrl, user, apiToken) {
-  const validUrl = validateBaseUrl(baseUrl);
-  const resp = await axios.get(
-    `${validUrl}/api/json?tree=jobs[name,url,color,_class]`,
-    safeAxiosConfig(user, apiToken)
-  );
-  return resp.data.jobs || [];
-}
+// --- Parameter validation ---
+const PARAM_NAME_REGEX = /^[a-zA-Z0-9_\-.]+$/;
+const RESERVED_KEYS = ['token', 'cause', 'json', 'submit'];
 
-async function fetchJobParams(baseUrl, user, apiToken, jobPath) {
-  const validUrl = validateBaseUrl(baseUrl);
-  try {
-    const url = `${validUrl}${jobPath}/api/json?tree=property[parameterDefinitions[name,type,defaultParameterValue[value],description,choices]]`;
-    const resp = await axios.get(url, safeAxiosConfig(user, apiToken));
-    const props = resp.data.property || [];
-    for (const p of props) {
-      if (p.parameterDefinitions) return p.parameterDefinitions;
-    }
-    return [];
-  } catch {
-    return [];
-  }
-}
-
-// Allowlist of safe parameter name characters
 function sanitizeParams(params) {
   const sanitized = {};
-  const PARAM_NAME_REGEX = /^[a-zA-Z0-9_\-.]+$/;
-  const RESERVED_KEYS = ['token', 'cause', 'json', 'submit'];
-
   for (const [key, value] of Object.entries(params)) {
-    if (!PARAM_NAME_REGEX.test(key)) {
-      throw new Error(`Invalid parameter name: "${key}". Only alphanumeric, underscore, hyphen, and dot are allowed.`);
-    }
-    if (RESERVED_KEYS.includes(key.toLowerCase())) {
-      throw new Error(`Parameter name "${key}" is reserved and cannot be used.`);
-    }
-    // Limit value length to prevent abuse
-    if (typeof value === 'string' && value.length > 1000) {
-      throw new Error(`Parameter "${key}" value exceeds maximum length (1000 chars).`);
-    }
+    if (!PARAM_NAME_REGEX.test(key)) throw new Error(`Invalid parameter name: "${key}"`);
+    if (RESERVED_KEYS.includes(key.toLowerCase())) throw new Error(`Parameter "${key}" is reserved`);
+    if (typeof value === 'string' && value.length > 1000) throw new Error(`Parameter "${key}" value too long`);
     sanitized[key] = value;
   }
   return sanitized;
 }
 
+async function openJenkinsTokenPage(baseUrl) {
+  const validUrl = validateBaseUrl(baseUrl);
+  const tokenUrl = `${validUrl}/me/configure`;
+  openUrl(tokenUrl);
+  return tokenUrl;
+}
+
+async function validateAndFetchUser(baseUrl, user, apiToken) {
+  const validUrl = validateBaseUrl(baseUrl);
+  const resp = await request(`${validUrl}/me/api/json`, { headers: authHeaders(user, apiToken) });
+  return { fullName: resp.fullName, id: resp.id };
+}
+
+async function fetchAllJobs(baseUrl, user, apiToken) {
+  const validUrl = validateBaseUrl(baseUrl);
+  const resp = await request(`${validUrl}/api/json?tree=jobs[name,url,color,_class]`, { headers: authHeaders(user, apiToken), timeout: 30000 });
+  return resp.jobs || [];
+}
+
+async function fetchJobParams(baseUrl, user, apiToken, jobPath) {
+  const validUrl = validateBaseUrl(baseUrl);
+  try {
+    const resp = await request(`${validUrl}${jobPath}/api/json?tree=property[parameterDefinitions[name,type,defaultParameterValue[value],description,choices]]`, { headers: authHeaders(user, apiToken) });
+    const props = resp.property || [];
+    for (const p of props) { if (p.parameterDefinitions) return p.parameterDefinitions; }
+    return [];
+  } catch { return []; }
+}
+
 async function triggerBuild({ baseUrl, user, apiToken, buildToken, jobPath, params }) {
   const validUrl = validateBaseUrl(baseUrl);
-  const sanitizedParams = sanitizeParams(params || {});
-  const url = `${validUrl}${jobPath}/buildWithParameters`;
-  await axios.post(url, null, {
-    params: { token: buildToken, cause: 'BuildPilot', ...sanitizedParams },
-    ...safeAxiosConfig(user, apiToken),
-  });
+  const sanitized = sanitizeParams(params || {});
+  const qs = new URLSearchParams({ token: buildToken, cause: 'BuildPilot', ...sanitized }).toString();
+  await request(`${validUrl}${jobPath}/buildWithParameters?${qs}`, { method: 'POST', headers: authHeaders(user, apiToken) });
 }
 
 module.exports = { openJenkinsTokenPage, validateAndFetchUser, fetchAllJobs, fetchJobParams, triggerBuild, validateBaseUrl, sanitizeParams };

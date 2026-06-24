@@ -6,7 +6,7 @@ const { getCredentials, saveJenkinsCredentials, saveSlackConfig, saveJobs, getJo
 const { openJenkinsTokenPage, validateAndFetchUser, fetchAllJobs, fetchJobParams, triggerBuild } = require('./auth/jenkins-auth');
 const { slackOAuthLogin, sendSlackDM, postToChannel } = require('./auth/slack-auth');
 
-const server = new Server({ name: 'jenkins-slack-mcp', version: '2.1.0' }, { capabilities: { tools: {} } });
+const server = new Server({ name: 'jenkins-slack-mcp', version: '3.0.0' }, { capabilities: { tools: {} } });
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
@@ -72,6 +72,55 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       name: 'refresh_jobs',
       description: 'Re-fetch all jobs from Jenkins (use after new jobs are created)',
       inputSchema: { type: 'object', properties: {} },
+    },
+    {
+      name: 'stop_build',
+      description: 'Stop/cancel a running Jenkins build.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          jobName: { type: 'string', description: 'Jenkins job name' },
+          buildNumber: { type: 'number', description: 'Build number to stop (omit for latest)' },
+        },
+        required: ['jobName'],
+      },
+    },
+    {
+      name: 'build_status',
+      description: 'Get the status of a specific build or the latest build of a job. Shows build number, status, duration, displayName, and description.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          jobName: { type: 'string', description: 'Jenkins job name' },
+          buildNumber: { type: 'number', description: 'Build number (omit for latest)' },
+        },
+        required: ['jobName'],
+      },
+    },
+    {
+      name: 'build_console',
+      description: 'Get console output (last 100 lines) of a specific build or the latest build.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          jobName: { type: 'string', description: 'Jenkins job name' },
+          buildNumber: { type: 'number', description: 'Build number (omit for latest)' },
+          lines: { type: 'number', description: 'Number of lines from end (default: 100)' },
+        },
+        required: ['jobName'],
+      },
+    },
+    {
+      name: 'build_history',
+      description: 'Get recent build history for a job. Shows last N builds with status, duration, and timestamps.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          jobName: { type: 'string', description: 'Jenkins job name' },
+          count: { type: 'number', description: 'Number of builds to show (default: 10, max: 25)' },
+        },
+        required: ['jobName'],
+      },
     },
     {
       name: 'whoami',
@@ -280,6 +329,102 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return text(`✅ Refreshed! ${Object.keys(buildableJobs).length} jobs discovered.`);
       }
 
+      case 'stop_build': {
+        const creds = getCredentials();
+        if (!creds.jenkins) return text('❌ Not logged into Jenkins. Use **login_jenkins** first.');
+        const jobs = getJobs();
+        const job = jobs[args.jobName];
+        if (!job) return text(`❌ Job "${args.jobName}" not found.`);
+
+        const { baseUrl, user, apiToken } = creds.jenkins;
+        const headers = { Authorization: 'Basic ' + Buffer.from(`${user}:${apiToken}`).toString('base64') };
+        const buildPath = args.buildNumber
+          ? `${baseUrl}${job.path}/${args.buildNumber}`
+          : `${baseUrl}${job.path}/lastBuild`;
+
+        // Check if building
+        const info = await fetchUrl(`${buildPath}/api/json?tree=number,building`, headers);
+        if (!info.building) return text(`⚠️ ${args.jobName} #${info.number} is not running.`);
+
+        await fetchUrl(`${buildPath}/stop`, headers, 'POST');
+        return text(`⛔ ${args.jobName} #${info.number} stopped.`);
+      }
+
+      case 'build_status': {
+        const creds = getCredentials();
+        if (!creds.jenkins) return text('❌ Not logged into Jenkins. Use **login_jenkins** first.');
+        const jobs = getJobs();
+        const job = jobs[args.jobName];
+        if (!job) return text(`❌ Job "${args.jobName}" not found.`);
+
+        const { baseUrl, user, apiToken } = creds.jenkins;
+        const headers = { Authorization: 'Basic ' + Buffer.from(`${user}:${apiToken}`).toString('base64') };
+        const buildPath = args.buildNumber
+          ? `${baseUrl}${job.path}/${args.buildNumber}`
+          : `${baseUrl}${job.path}/lastBuild`;
+
+        const build = await fetchUrl(`${buildPath}/api/json?tree=number,building,result,timestamp,duration,displayName,description`, headers);
+        const status = build.building ? '🔄 RUNNING' : (build.result === 'SUCCESS' ? '✅ SUCCESS' : build.result === 'FAILURE' ? '❌ FAILURE' : `⚠️ ${build.result || 'UNKNOWN'}`);
+        const duration = build.duration ? `${(build.duration / 1000).toFixed(1)}s` : '—';
+        const started = build.timestamp ? new Date(build.timestamp).toLocaleString() : '—';
+
+        let msg = `## ${args.jobName} #${build.number}\n\n`;
+        msg += `| Field | Value |\n|-------|-------|\n`;
+        msg += `| Status | ${status} |\n`;
+        msg += `| Started | ${started} |\n`;
+        msg += `| Duration | ${duration} |\n`;
+        msg += `| Display Name | ${build.displayName || '—'} |\n`;
+        msg += `| Description | ${build.description || '—'} |\n`;
+        if (build.building) msg += `\n_Build is still running..._`;
+        return text(msg);
+      }
+
+      case 'build_console': {
+        const creds = getCredentials();
+        if (!creds.jenkins) return text('❌ Not logged into Jenkins. Use **login_jenkins** first.');
+        const jobs = getJobs();
+        const job = jobs[args.jobName];
+        if (!job) return text(`❌ Job "${args.jobName}" not found.`);
+
+        const { baseUrl, user, apiToken } = creds.jenkins;
+        const headers = { Authorization: 'Basic ' + Buffer.from(`${user}:${apiToken}`).toString('base64') };
+        const buildPath = args.buildNumber
+          ? `${baseUrl}${job.path}/${args.buildNumber}`
+          : `${baseUrl}${job.path}/lastBuild`;
+
+        const consoleText = await fetchUrl(`${buildPath}/consoleText`, headers);
+        const lines = String(consoleText).split('\n');
+        const count = Math.min(args.lines || 100, 200);
+        const output = lines.slice(-count).join('\n');
+        return text(`**Console Output** (last ${count} lines):\n\n\`\`\`\n${output}\n\`\`\``);
+      }
+
+      case 'build_history': {
+        const creds = getCredentials();
+        if (!creds.jenkins) return text('❌ Not logged into Jenkins. Use **login_jenkins** first.');
+        const jobs = getJobs();
+        const job = jobs[args.jobName];
+        if (!job) return text(`❌ Job "${args.jobName}" not found.`);
+
+        const { baseUrl, user, apiToken } = creds.jenkins;
+        const headers = { Authorization: 'Basic ' + Buffer.from(`${user}:${apiToken}`).toString('base64') };
+        const count = Math.min(args.count || 10, 25);
+
+        const data = await fetchUrl(`${baseUrl}${job.path}/api/json?tree=builds[number,result,timestamp,duration,building,displayName]{0,${count}}`, headers);
+        const builds = data.builds || [];
+        if (!builds.length) return text(`No builds found for ${args.jobName}.`);
+
+        let table = `## ${args.jobName} — Last ${builds.length} builds\n\n`;
+        table += `| # | Status | Started | Duration | Display Name |\n|---|--------|---------|----------|--------------|\n`;
+        for (const b of builds) {
+          const status = b.building ? '🔄 Running' : (b.result === 'SUCCESS' ? '✅' : b.result === 'FAILURE' ? '❌' : `⚠️ ${b.result || '?'}`);
+          const dur = b.duration ? `${(b.duration / 1000).toFixed(0)}s` : '—';
+          const time = b.timestamp ? new Date(b.timestamp).toLocaleString() : '—';
+          table += `| #${b.number} | ${status} | ${time} | ${dur} | ${b.displayName || '—'} |\n`;
+        }
+        return text(table);
+      }
+
       case 'whoami': {
         const creds = getCredentials();
         const parts = [];
@@ -318,6 +463,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 function text(msg) {
   return { content: [{ type: 'text', text: msg }] };
+}
+
+function fetchUrl(url, headers, method = 'GET') {
+  const https = require('https');
+  const http = require('http');
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const mod = parsed.protocol === 'https:' ? https : http;
+    const req = mod.request(url, { method, headers, timeout: 15000 }, (res) => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        if (res.statusCode >= 400) reject(new Error(`HTTP ${res.statusCode}`));
+        else { try { resolve(JSON.parse(data)); } catch { resolve(data); } }
+      });
+    });
+    req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
+    req.on('error', reject);
+    req.end();
+  });
 }
 
 async function main() {
