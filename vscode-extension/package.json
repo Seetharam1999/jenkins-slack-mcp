@@ -2,7 +2,7 @@
   "name": "buildpilot",
   "displayName": "BuildPilot",
   "description": "Trigger Jenkins builds directly from your IDE. Auto-discovers jobs, supports parameterized builds, and sends Slack notifications.",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "publisher": "mr-srs",
   "engines": { "vscode": "^1.85.0" },
   "categories": ["Other", "Testing"],
