@@ -9,7 +9,7 @@
   "keywords": ["jenkins", "ci", "cd", "build", "deploy", "continuous integration", "continuous deployment", "devops", "pipeline", "slack"],
   "icon": "media/buildpilot-icon.png",
   "repository": { "type": "git", "url": "https://github.com/Seetharam1999/buildpilot" },
-  "activationEvents": ["onStartupFinished"],
+  "activationEvents": ["onView:buildpilot.jobs"],
   "main": "./src/extension.js",
   "contributes": {
     "viewsContainers": {
@@ -68,11 +68,7 @@
       }
     }
   },
-  "dependencies": {
-    "axios": "^1.6.0",
-    "express": "^4.18.2",
-    "open": "^9.1.0"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@types/vscode": "^1.85.0"
   }

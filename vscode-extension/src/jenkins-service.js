@@ -1,4 +1,5 @@
-const axios = require('axios');
+const https = require('https');
+const http = require('http');
 const vscode = require('vscode');
 const { URL } = require('url');
 
@@ -11,13 +12,39 @@ function validateBaseUrl(baseUrl) {
   if (!baseUrl || typeof baseUrl !== 'string') throw new Error('Invalid Jenkins URL');
   let parsed;
   try { parsed = new URL(baseUrl); } catch { throw new Error('Invalid URL format'); }
-  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
-    throw new Error('Only HTTP/HTTPS protocols are allowed');
-  }
-  for (const pattern of BLOCKED_HOSTS) {
-    if (pattern.test(parsed.hostname)) throw new Error('Connection to private/internal networks is not allowed');
-  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') throw new Error('Only HTTP/HTTPS allowed');
+  for (const p of BLOCKED_HOSTS) { if (p.test(parsed.hostname)) throw new Error('Private/internal networks blocked'); }
   return parsed.origin;
+}
+
+function request(url, opts = {}) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const mod = parsed.protocol === 'https:' ? https : http;
+    const timeout = opts.timeout || 15000;
+    const req = mod.request(url, {
+      method: opts.method || 'GET',
+      headers: opts.headers || {},
+      timeout,
+    }, (res) => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        if (res.statusCode >= 400 && res.statusCode !== 201) {
+          reject(new Error(`HTTP ${res.statusCode}`));
+        } else {
+          try { resolve(JSON.parse(data)); } catch { resolve(data); }
+        }
+      });
+    });
+    req.on('timeout', () => { req.destroy(); reject(new Error('Request timeout')); });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+function authHeaders(user, apiToken) {
+  return { Authorization: 'Basic ' + Buffer.from(`${user}:${apiToken}`).toString('base64') };
 }
 
 class JenkinsService {
@@ -31,52 +58,34 @@ class JenkinsService {
 
   async _loadFromState() {
     this.jobs = this.context.globalState.get('buildpilot.jobs', {});
-    // Load non-sensitive metadata from globalState
     const meta = this.context.globalState.get('buildpilot.jenkins.meta', null);
     if (!meta) return;
-    // Retrieve secrets from secure storage
     try {
       const apiToken = await this.secrets.get('buildpilot.apiToken');
       const buildToken = await this.secrets.get('buildpilot.buildToken');
-      if (apiToken) {
-        this._creds = { baseUrl: meta.baseUrl, user: meta.user, apiToken, buildToken: buildToken || '' };
-      }
+      if (apiToken) this._creds = { baseUrl: meta.baseUrl, user: meta.user, apiToken, buildToken: buildToken || '' };
     } catch {}
   }
 
   isLoggedIn() { return !!this._creds; }
-
   getJobs() { return this.jobs; }
-
   getCreds() { return this._creds; }
 
   async login(baseUrl, user, apiToken, buildToken) {
     const validUrl = validateBaseUrl(baseUrl);
-    const resp = await axios.get(`${validUrl}/me/api/json`, {
-      auth: { username: user, password: apiToken },
-      timeout: 15000,
-    });
-
+    await request(`${validUrl}/me/api/json`, { headers: authHeaders(user, apiToken) });
     this._creds = { baseUrl: validUrl, user, apiToken, buildToken };
-
-    // Store only non-sensitive metadata in globalState
     await this.context.globalState.update('buildpilot.jenkins.meta', { baseUrl: validUrl, user });
-    // Store secrets in encrypted secrets API
     await this.secrets.store('buildpilot.apiToken', apiToken);
     await this.secrets.store('buildpilot.buildToken', buildToken || '');
-
-    return resp.data;
   }
 
   async discoverJobs() {
     if (!this._creds) throw new Error('Not logged in');
     const { baseUrl, user, apiToken } = this._creds;
-    const resp = await axios.get(`${baseUrl}/api/json?tree=jobs[name,url,color,_class]`, {
-      auth: { username: user, password: apiToken },
-      timeout: 30000,
-    });
+    const data = await request(`${baseUrl}/api/json?tree=jobs[name,url,color,_class]`, { headers: authHeaders(user, apiToken), timeout: 30000 });
     this.jobs = {};
-    for (const j of (resp.data.jobs || [])) {
+    for (const j of (data.jobs || [])) {
       if (j._class === 'com.cloudbees.hudson.plugins.folder.Folder') continue;
       this.jobs[j.name] = { name: j.name, path: `/job/${encodeURIComponent(j.name)}`, color: j.color || 'unknown' };
     }
@@ -87,23 +96,13 @@ class JenkinsService {
     const job = this.jobs[jobName];
     if (!job) throw new Error(`Job "${jobName}" not found`);
     const { baseUrl, user, apiToken, buildToken } = this._creds;
-
-    // Validate params - block reserved keys
     const RESERVED = ['token', 'cause', 'json', 'submit'];
     for (const key of Object.keys(params)) {
-      if (RESERVED.includes(key.toLowerCase())) {
-        throw new Error(`Parameter "${key}" is reserved`);
-      }
-      if (!/^[a-zA-Z0-9_\-.]+$/.test(key)) {
-        throw new Error(`Invalid parameter name: "${key}"`);
-      }
+      if (RESERVED.includes(key.toLowerCase())) throw new Error(`Parameter "${key}" is reserved`);
+      if (!/^[a-zA-Z0-9_\-.]+$/.test(key)) throw new Error(`Invalid parameter name: "${key}"`);
     }
-
-    await axios.post(`${baseUrl}${job.path}/buildWithParameters`, null, {
-      params: { token: buildToken, cause: 'BuildPilot', ...params },
-      auth: { username: user, password: apiToken },
-      timeout: 15000,
-    });
+    const qs = new URLSearchParams({ token: buildToken, cause: 'BuildPilot', ...params }).toString();
+    await request(`${baseUrl}${job.path}/buildWithParameters?${qs}`, { method: 'POST', headers: authHeaders(user, apiToken) });
   }
 
   async getLastBuildNumber(jobName) {
@@ -111,11 +110,7 @@ class JenkinsService {
     if (!job) return null;
     const { baseUrl, user, apiToken } = this._creds;
     try {
-      const resp = await axios.get(`${baseUrl}${job.path}/lastBuild/api/json?tree=number,building`, {
-        auth: { username: user, password: apiToken },
-        timeout: 10000,
-      });
-      return resp.data;
+      return await request(`${baseUrl}${job.path}/lastBuild/api/json?tree=number,building`, { headers: authHeaders(user, apiToken), timeout: 10000 });
     } catch { return null; }
   }
 
@@ -123,10 +118,18 @@ class JenkinsService {
     const job = this.jobs[jobName];
     if (!job) throw new Error(`Job "${jobName}" not found`);
     const { baseUrl, user, apiToken } = this._creds;
-    await axios.post(`${baseUrl}${job.path}/${buildNumber}/stop`, null, {
-      auth: { username: user, password: apiToken },
-      timeout: 10000,
-    });
+    await request(`${baseUrl}${job.path}/${buildNumber}/stop`, { method: 'POST', headers: authHeaders(user, apiToken), timeout: 10000 });
+  }
+
+  async getConsoleText(jobName, buildNumber) {
+    const job = this.jobs[jobName];
+    if (!job) return '';
+    const { baseUrl, user, apiToken } = this._creds;
+    try {
+      const text = await request(`${baseUrl}${job.path}/${buildNumber}/consoleText`, { headers: authHeaders(user, apiToken), timeout: 10000 });
+      const lines = String(text).split('\n');
+      return lines.slice(-100).join('\n');
+    } catch { return ''; }
   }
 
   logout() {
