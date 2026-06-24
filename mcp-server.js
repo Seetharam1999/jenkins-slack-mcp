@@ -306,7 +306,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return text(`Unknown tool: ${name}`);
     }
   } catch (err) {
-    return { content: [{ type: 'text', text: `❌ Error: ${err.message}` }], isError: true };
+    // Sanitize error message to prevent credential leakage
+    const safeMessage = (err.message || 'Unknown error')
+      .replace(/https?:\/\/[^\s]+/g, '[URL_REDACTED]')
+      .replace(/Basic\s+[A-Za-z0-9+/=]+/g, '[AUTH_REDACTED]')
+      .replace(/token[=:]\s*\S+/gi, 'token=[REDACTED]')
+      .slice(0, 200);
+    return { content: [{ type: 'text', text: `❌ Error: ${safeMessage}` }], isError: true };
   }
 });
 
