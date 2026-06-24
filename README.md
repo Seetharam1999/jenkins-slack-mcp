@@ -2,13 +2,13 @@
 
 MCP server to trigger Jenkins builds from any IDE (Amazon Q, VS Code, Cursor) with Slack notifications. Zero config — login once and it remembers.
 
-## Global Install (for anyone)
+## Install
 
 ```bash
-npm install -g jenkins-slack-mcp
+npm install -g github:Seetharam1999/jenkins-slack-mcp
 ```
 
-Then add to your IDE's MCP config:
+## Register in your IDE
 
 **Amazon Q** (`~/.aws/amazonq/mcp.json`):
 ```json
@@ -34,9 +34,19 @@ Then add to your IDE's MCP config:
 }
 ```
 
-## First-time Setup (from IDE chat)
+**Without global install** (npx):
+```json
+{
+  "mcpServers": {
+    "jenkins-slack": {
+      "command": "npx",
+      "args": ["github:Seetharam1999/jenkins-slack-mcp"]
+    }
+  }
+}
+```
 
-Once the MCP is registered, use these tools from your IDE:
+## First-time Setup (from IDE chat)
 
 ### 1. Login to Jenkins
 ```
@@ -90,7 +100,7 @@ trigger_build:
 If you also want `/buildtt main` from Slack directly:
 
 ```bash
-jenkins-slack-mcp-server  # or: node server.js
+node server.js
 # Expose with ngrok:
 ngrok http 3001
 ```
@@ -101,27 +111,6 @@ Set Slack app slash command URL to `https://your-ngrok-url/slack/command`
 
 Stored at `~/.jenkins-slack-mcp/config.json` (600 permissions, owner-only).
 
-## Publishing to npm
+## Author
 
-```bash
-# Login to npm
-npm login
-
-# Publish
-npm publish
-```
-
-After publishing, anyone can:
-```bash
-npm install -g jenkins-slack-mcp
-```
-
-## Publishing to GitHub
-
-```bash
-git init
-git remote add origin https://github.com/your-org/jenkins-slack-mcp.git
-git add .
-git commit -m "Initial commit"
-git push -u origin main
-```
+[Seetharam1999](https://github.com/Seetharam1999)

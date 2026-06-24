@@ -4,7 +4,7 @@
   "description": "MCP server to trigger Jenkins builds from any IDE with Slack notifications. Auto-configures via interactive login.",
   "main": "mcp-server.js",
   "bin": {
-    "jenkins-slack-mcp": "./mcp-server.js"
+    "jenkins-slack-mcp": "mcp-server.js"
   },
   "scripts": {
     "start": "node mcp-server.js",
@@ -20,7 +20,7 @@
     "amazon-q",
     "ide"
   ],
-  "author": "seetharam",
+  "author": "Seetharam1999 (https://github.com/Seetharam1999)",
   "license": "MIT",
   "repository": {
     "type": "git",

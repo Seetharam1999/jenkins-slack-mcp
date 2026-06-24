@@ -1,0 +1,6 @@
+node_modules/
+.env
+.git/
+.claude/
+AGENTS.md
+CLAUDE.md
