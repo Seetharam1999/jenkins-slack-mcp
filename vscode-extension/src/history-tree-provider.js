@@ -31,6 +31,11 @@ class HistoryTreeProvider {
       const item = new vscode.TreeItem(`${entry.jobName} (${entry.params})`);
       item.description = entry.time;
       item.iconPath = new vscode.ThemeIcon('rocket');
+      item.command = {
+        command: 'buildpilot.showBuildSummary',
+        title: 'Show Build Summary',
+        arguments: [entry.jobName, entry.params]
+      };
       return item;
     });
   }
