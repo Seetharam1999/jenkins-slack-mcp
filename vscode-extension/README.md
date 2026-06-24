@@ -6,7 +6,7 @@
 
 The fastest way to run your **CI/CD** pipeline. One click **build** trigger for **Jenkins** — right from your editor.
 
-![BuildPilot](media/buildpilot.svg)
+
 
 ## Features
 

@@ -19,6 +19,8 @@ class JenkinsService {
 
   getJobs() { return this.jobs; }
 
+  getCreds() { return this._creds; }
+
   async login(baseUrl, user, apiToken, buildToken) {
     const resp = await axios.get(`${baseUrl}/me/api/json`, { auth: { username: user, password: apiToken } });
     this._creds = { baseUrl, user, apiToken, buildToken };
@@ -38,26 +40,31 @@ class JenkinsService {
     await this.context.globalState.update('buildpilot.jobs', this.jobs);
   }
 
-  async getJobParams(jobName) {
-    const job = this.jobs[jobName];
-    if (!job) return [];
-    const { baseUrl, user, apiToken } = this._creds;
-    try {
-      const url = `${baseUrl}${job.path}/api/json?tree=property[parameterDefinitions[name,type,defaultParameterValue[value],description,choices]]`;
-      const resp = await axios.get(url, { auth: { username: user, password: apiToken } });
-      for (const p of (resp.data.property || [])) {
-        if (p.parameterDefinitions) return p.parameterDefinitions;
-      }
-    } catch {}
-    return [];
-  }
-
   async triggerBuild(jobName, params = {}) {
     const job = this.jobs[jobName];
     if (!job) throw new Error(`Job "${jobName}" not found`);
     const { baseUrl, user, apiToken, buildToken } = this._creds;
     await axios.post(`${baseUrl}${job.path}/buildWithParameters`, null, {
       params: { token: buildToken, cause: 'BuildPilot', ...params },
+      auth: { username: user, password: apiToken },
+    });
+  }
+
+  async getLastBuildNumber(jobName) {
+    const job = this.jobs[jobName];
+    if (!job) return null;
+    const { baseUrl, user, apiToken } = this._creds;
+    try {
+      const resp = await axios.get(`${baseUrl}${job.path}/lastBuild/api/json?tree=number,building`, { auth: { username: user, password: apiToken } });
+      return resp.data;
+    } catch { return null; }
+  }
+
+  async cancelBuild(jobName, buildNumber) {
+    const job = this.jobs[jobName];
+    if (!job) throw new Error(`Job "${jobName}" not found`);
+    const { baseUrl, user, apiToken } = this._creds;
+    await axios.post(`${baseUrl}${job.path}/${buildNumber}/stop`, null, {
       auth: { username: user, password: apiToken },
     });
   }
